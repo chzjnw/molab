@@ -306,25 +306,46 @@ sub{
   transform:translateX(-50%) translateY(-8px) scale(.96);
   z-index:8;
   font-family:var(--font-sans);
-  font-size:12.5px;
+  font-size:12px;
   font-weight:600;
   color:#fff;
-  background:var(--cobalt);
-  border:1px solid var(--cobalt);
-  padding:9px 18px;
+  background:rgba(20,24,32,0.92);
+  border:1px solid rgba(255,255,255,0.18);
+  padding:7px 9px;
   border-radius:var(--radius-pill);
-  box-shadow:0 10px 28px -8px rgba(58,90,156,0.55);
-  cursor:pointer;
+  box-shadow:0 10px 28px -8px rgba(10,13,19,0.65);
   opacity:0;
   pointer-events:none;
   transition:opacity .18s var(--ease-out), transform .18s var(--ease-back);
   white-space:nowrap;
+  display:flex;
+  align-items:center;
+  gap:7px;
 }
 #connect-action.show{ opacity:1; transform:translateX(-50%) translateY(0) scale(1); pointer-events:auto; }
-#connect-action:hover:not(:disabled){ background:var(--cobalt-deep); border-color:var(--cobalt-deep); }
-#connect-action:disabled{
-  background:rgba(20,24,32,0.72); border-color:rgba(255,255,255,0.14); color:rgba(255,255,255,0.6);
-  cursor:not-allowed; box-shadow:none;
+.ca-label{ color:rgba(255,255,255,0.72); padding:0 4px; }
+.ca-option,.ca-disconnect{
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:var(--radius-pill);
+  background:var(--cobalt);
+  color:#fff;
+  font:600 11.5px/1 var(--font-sans);
+  padding:7px 11px;
+  cursor:pointer;
+  transition:background .14s var(--ease-out), border-color .14s var(--ease-out), transform .14s var(--ease-out);
+}
+.ca-option:hover,.ca-disconnect:hover{ background:var(--cobalt-deep); border-color:rgba(255,255,255,0.35); transform:translateY(-1px); }
+.ca-option:disabled{
+  cursor:default;
+  background:rgba(255,255,255,0.1);
+  border-color:var(--verdigris);
+  color:#c8e3dc;
+  transform:none;
+}
+.ca-disconnect{ background:var(--rose); }
+.ca-status{ color:rgba(255,255,255,0.7); padding:2px 8px; font-weight:500; }
+@media(max-width:560px){
+  #connect-action{ max-width:calc(100vw - 20px); flex-wrap:wrap; justify-content:center; border-radius:14px; }
 }
 
 /* bond-angle readout — appears top-center when exactly 3 atoms are selected (not a button, just info) */
@@ -702,7 +723,7 @@ sub{
       </div>
 
       <div id="drag-hint">드래그: 회전 · 스크롤: 확대/축소 · 빈 자리 클릭: 원자 추가</div>
-      <button id="connect-action"></button>
+      <div id="connect-action" aria-live="polite"></div>
       <div id="angle-badge"></div>
 
       <div id="empty-state">
@@ -719,11 +740,12 @@ sub{
         <h4>사용 방법</h4>
         · 빈 결합 자리(점멸하는 구슬)를 <b>클릭</b>하면 원소를 골라 새 원자를 붙일 수 있어요. 결합 종류(단일·이중·삼중)는 남은 자리가 있을 때만 고를 수 있어요.<br>
         · 원자를 <b>클릭</b>하면 성질이 표시되고, <span class="hk">Shift</span>+클릭으로 여러 원자를 함께 선택할 수 있어요.<br>
-        · 원자 <b>2개를 선택</b>하면 화면 위쪽에 연결 버튼이 떠요 — 몇 중 결합이 될지는 남은 결합 자리를 보고 자동으로 정해져요.<br>
+        · 원자 <b>2개를 선택</b>하면 화면 위쪽에 가능한 단일·이중·삼중결합 선택지가 떠요. 이미 연결된 원자도 남은 결합 자리가 있으면 결합 차수를 바꿀 수 있어요.<br>
         · 원자 <b>3개를 선택</b>하면(가운데 원자가 나머지 둘과 모두 결합돼 있어야 해요) 결합각이 화면 위쪽에 표시돼요.<br>
         · 선택한 원자에서 <span class="hk">Backspace</span>를 누르면 그 원자(들)와 딸린 구조가 함께 삭제돼요.<br>
         · 화면을 <span class="hk">드래그</span>하면 회전, <span class="hk">스크롤</span>하면 확대·축소돼요.<br>
         · <b>저장</b>으로 만든 분자를 .molecule 파일로 내려받고, <b>불러오기</b>로 다시 열 수 있어요.<br>
+        · 모양이 흐트러져 보이면 <b>분자 정돈</b>을 누르세요. 고리·결합 길이·전자영역 반발과 카메라 시점을 함께 다시 맞춰요.<br>
         · 원소 선택창은 실제 주기율표 모양이에요. 전이 금속은 이 모형의 단순 결합 규칙으로 표현하기 어려워 자리만 표시돼요.<br>
         · 결합 각도는 전자쌍 반발(VSEPR) 이론에 따라 자동으로 계산돼요.<br>
         · 원자를 붙이거나 연결할 때마다 분자 전체가 겹치지 않게 잠시 후 스스로 자리를 잡아요 — 고리를 닫으면 특히 유용해요.
@@ -736,12 +758,14 @@ sub{
           <button class="dock-btn" id="btn-load">불러오기</button>
           <input type="file" id="file-load-input" accept=".molecule,application/json" style="display:none;">
           <button class="dock-btn" id="btn-undo" disabled>실행 취소</button>
+          <button class="dock-btn" id="btn-tidy">분자 정돈</button>
           <button class="dock-btn" id="btn-reset">초기화</button>
         </div>
         <div class="dock-group">
           <div class="toggle-chip" id="toggle-lone"><span class="dot"></span>비공유 전자쌍</div>
-          <div class="toggle-chip on" id="toggle-dipole"><span class="dot"></span>쌍극자 벡터</div>
-          <div class="toggle-chip on" id="toggle-spin"><span class="dot"></span>자동 회전</div>
+          <div class="toggle-chip on" id="toggle-labels"><span class="dot"></span>원소 이름표</div>
+          <div class="toggle-chip" id="toggle-dipole"><span class="dot"></span>쌍극자 벡터</div>
+          <div class="toggle-chip" id="toggle-spin"><span class="dot"></span>자동 회전</div>
         </div>
       </div>
     </div>
@@ -1300,6 +1324,7 @@ let scene, camera, renderer, moleculeGroup, dipoleLayer, selectionHalos = {};
 let canvasEl, viewportEl;
 let camDistance = 8;
 const CAM_MIN = 2.6, CAM_MAX = 42;
+const DEFAULT_VIEW_ROTATION = { x:-0.35, y:0.48, z:0 };
 let dragging = false, lastPX=0, lastPY=0, velX=0, velY=0, lastMoveT=0;
 let pointerDownX=0, pointerDownY=0, pointerDownT=0, movedDist=0;
 let lastInteractionT = 0;
@@ -1307,8 +1332,9 @@ const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
 let showLonePairs = true;
-let showDipole = true;
-let autoSpin = true;
+let showLabels = true;
+let showDipole = false;
+let autoSpin = false;
 
 function initScene(){
   canvasEl = document.getElementById('three-canvas');
@@ -1332,7 +1358,7 @@ function initScene(){
   scene.add(dir2);
 
   moleculeGroup = new THREE.Group();
-  moleculeGroup.rotation.set(-0.35, 0.55, 0);
+  moleculeGroup.rotation.set(DEFAULT_VIEW_ROTATION.x, DEFAULT_VIEW_ROTATION.y, DEFAULT_VIEW_ROTATION.z);
   scene.add(moleculeGroup);
 
   dipoleLayer = new THREE.Group();
@@ -1351,6 +1377,24 @@ function resizeRenderer(){
   camera.aspect = w/h;
   camera.updateProjectionMatrix();
   renderer.setSize(w,h,false);
+}
+
+let cameraFitGeneration=0;
+function fitCameraToMolecule(duration){
+  const atoms=allAtoms();
+  if(!atoms.length){ camDistance=8; return; }
+  let radius=0;
+  atoms.forEach(node=>{
+    radius=Math.max(radius,node.pos3D.length()+ELEMENTS[node.element].radius+0.8);
+  });
+  const verticalHalfTan=Math.tan((camera.fov*Math.PI/180)/2);
+  const limitingHalfTan=verticalHalfTan*Math.min(1,camera.aspect||1);
+  const target=Math.max(8,Math.min(CAM_MAX,radius/Math.max(0.1,limitingHalfTan)*1.12));
+  const start=camDistance;
+  const generation=++cameraFitGeneration;
+  animateValue(duration===undefined?360:duration,e=>{
+    if(generation===cameraFitGeneration) camDistance=lerp(start,target,e);
+  });
 }
 
 function renderLoop(now){
@@ -1392,6 +1436,16 @@ function clampTilt(){
 }
 
 function markInteraction(){ lastInteractionT = performance.now(); }
+
+function resetMoleculeView(){
+  if(!moleculeGroup) return;
+  moleculeGroup.rotation.set(DEFAULT_VIEW_ROTATION.x,DEFAULT_VIEW_ROTATION.y,DEFAULT_VIEW_ROTATION.z);
+  velX=0; velY=0;
+  camDistance=8;
+  autoSpin=false;
+  document.getElementById('toggle-spin')?.classList.remove('on');
+  markInteraction();
+}
 
 function wirePointerEvents(){
   canvasEl.addEventListener('pointerdown', (e)=>{
@@ -1663,6 +1717,7 @@ function spawnAtomVisuals(node){
   const elR = ELEMENTS[node.element].radius;
   label.position.copy(node.pos3D.clone().add(new THREE.Vector3(0, elR+0.42, 0)));
   label.material.opacity = 0;
+  label.visible = showLabels;
   moleculeGroup.add(label);
   node.meshLabel = label;
   animateValue(480, (e)=>{ label.material.opacity = e; }, null, easeOutCubic);
@@ -1680,6 +1735,7 @@ function spawnAtomVisuals(node){
 
 function setRootAtom(elementSymbol){
   clearMoleculeAll();
+  resetMoleculeView();
   const root = createAtomNode(elementSymbol, null, null);
   root.pos3D = new THREE.Vector3(0,0,0);
   computeRootDirections(root);
@@ -1848,6 +1904,7 @@ function deleteAtomCascade(nodeId){
 
 function resetMolecule(){
   clearMoleculeAll();
+  resetMoleculeView();
   rebuildDipoleLayer();
   refreshAll();
 }
@@ -1858,6 +1915,188 @@ function resetMolecule(){
 // ("electron domains spread out to minimize repulsion") — so it doubles as a cheap way to keep
 // branches from overlapping AND to pull a freshly-closed ring into a sane loop shape instead of
 // leaving one bond stretched across the whole molecule.
+function translatePositionSubtree3D(node, delta, positions, blocked, visited){
+  if(!node || blocked.has(node.id) || visited.has(node.id)) return;
+  visited.add(node.id);
+  if(positions[node.id]) positions[node.id].add(delta);
+  treeChildren(node).forEach(child=>translatePositionSubtree3D(child,delta,positions,blocked,visited));
+}
+
+function continuationDirections3D(direction,normal,count){
+  if(count<=1) return [direction.clone()];
+  let side=new THREE.Vector3().crossVectors(normal,direction);
+  if(side.lengthSq()<1e-7) side=perpAxis(direction);
+  side.normalize();
+  if(count===2){
+    return [-1,1].map(sign=>direction.clone().multiplyScalar(0.72).add(side.clone().multiplyScalar(sign*0.69)).normalize());
+  }
+  const up=new THREE.Vector3().crossVectors(direction,side).normalize();
+  return [0,1,2].map(i=>{
+    const theta=i*2*Math.PI/3;
+    return direction.clone().multiplyScalar(0.48)
+      .add(side.clone().multiplyScalar(Math.cos(theta)*0.62))
+      .add(up.clone().multiplyScalar(Math.sin(theta)*0.62)).normalize();
+  });
+}
+
+function layoutRingBranch3D(node,parentNode,origin,direction,normal,positions,blocked){
+  if(!node || blocked.has(node.id)) return;
+  const length=bondLength3D(parentNode.element,node.element);
+  const next=origin.clone().add(direction.clone().multiplyScalar(length));
+  positions[node.id].copy(next);
+  const children=treeChildren(node).filter(child=>!blocked.has(child.id));
+  const directions=continuationDirections3D(direction,normal,children.length);
+  children.forEach((child,i)=>{
+    layoutRingBranch3D(child,node,next,directions[i],normal,positions,blocked);
+  });
+}
+
+function applyRingAttachedDomainTargets(positions,ringAtomIds){
+  const blocked=new Set(ringAtomIds);
+  const attached=allAtoms().filter(node=>node.parent && ringAtomIds.has(node.parent) && ELEMENTS[node.element].lone>0);
+  // A few deterministic sweeps let each oxygen react to the lone-pair positions chosen by the
+  // others without introducing a heavy general-purpose physics engine.
+  for(let pass=0;pass<6;pass++) attached.forEach(node=>{
+    const parent=molecule.atomsById[node.parent];
+    const parentFrame=ringFrameForAtom(parent.id,positions);
+    if(!parentFrame) return;
+    const back=positions[parent.id].clone().sub(positions[node.id]).normalize();
+    let result=computeChildDomainDirections(ELEMENTS[node.element],back,node.bondOrder||1);
+    result=ringAttachedDomainOrientation(node,back,result,parentFrame,positions);
+    node.dirFromParent=back.clone().negate();
+    node.bondSlotDirs=result.bondSlotDirs;
+    node.lonePairDirs=result.lonePairDirs;
+
+    const movedChildren=new Set();
+    node.slots.forEach((childId,slotIndex)=>{
+      const child=molecule.atomsById[childId];
+      const dir=result.bondSlotDirs[slotIndex];
+      if(!child || !dir || movedChildren.has(child.id)) return;
+      movedChildren.add(child.id);
+      const target=positions[node.id].clone().add(dir.clone().multiplyScalar(bondLength3D(node.element,child.element)));
+      const delta=target.sub(positions[child.id]);
+      translatePositionSubtree3D(child,delta,positions,blocked,new Set());
+    });
+  });
+}
+
+// Spring relaxation alone preserves bond lengths but not the shape of a ring: substituent
+// repulsion can turn a six-membered loop into an irregular knot.  Fit each detected cycle to a
+// planar regular polygon, then carry every off-ring branch with its own vertex.  This also makes
+// a molecule reconstructed from a saved file settle into the same geometry as a newly built one.
+function applyRegularRingPositions3D(positions){
+  const ringAtomIds=new Set();
+  ringCycles().forEach(({ids})=>{
+    const n=ids.length;
+    if(n<3 || ids.some(id=>!positions[id])) return;
+    const cycleSet=new Set(ids);
+    ids.forEach(id=>ringAtomIds.add(id));
+
+    const old={};
+    const center=new THREE.Vector3();
+    ids.forEach(id=>{ old[id]=positions[id].clone(); center.add(old[id]); });
+    center.multiplyScalar(1/n);
+
+    // Use one canonical editing plane. Following the arbitrary plane of the zig-zag build path
+    // can leave a perfectly regular ring edge-on to the camera, which still looks collapsed and
+    // also changes orientation after loading the same file again.
+    const normal=new THREE.Vector3(0,0,1);
+
+    let anchorIndex=ids.findIndex(id=>{
+      const parent=molecule.atomsById[id]?.parent;
+      return !parent || !cycleSet.has(parent);
+    });
+    if(anchorIndex<0) anchorIndex=0;
+    const anchorId=ids[anchorIndex];
+    let radial=old[anchorId].clone().sub(center);
+    radial.addScaledVector(normal,-radial.dot(normal));
+    if(radial.lengthSq()<1e-7){
+      radial=old[ids[(anchorIndex+1)%n]].clone().sub(old[anchorId]);
+      radial.addScaledVector(normal,-radial.dot(normal));
+    }
+    if(radial.lengthSq()<1e-7) radial=perpAxis(normal);
+    radial.normalize();
+    let tangent=new THREE.Vector3().crossVectors(normal,radial).normalize();
+    const nextRel=old[ids[(anchorIndex+1)%n]].clone().sub(center);
+    if(nextRel.dot(tangent)<0) tangent.negate();
+
+    const sideLength=ids.reduce((sum,id,i)=>{
+      const a=molecule.atomsById[id], b=molecule.atomsById[ids[(i+1)%n]];
+      return sum+bondLength3D(a.element,b.element);
+    },0)/n;
+    const radius=sideLength/(2*Math.sin(Math.PI/n));
+    ids.forEach((id,i)=>{
+      const theta=(i-anchorIndex)*2*Math.PI/n;
+      const next=center.clone()
+        .add(radial.clone().multiplyScalar(Math.cos(theta)*radius))
+        .add(tangent.clone().multiplyScalar(Math.sin(theta)*radius));
+      positions[id].copy(next);
+    });
+
+    ids.forEach((id,vertexIndex)=>{
+      const vertexNode=molecule.atomsById[id];
+      const vertex=positions[id];
+      const outward=vertex.clone().sub(center).normalize();
+      const fixed=[];
+      const fixedIds=new Set();
+      const addFixed=(neighborId)=>{
+        if(!neighborId || fixedIds.has(neighborId) || !positions[neighborId]) return;
+        fixedIds.add(neighborId);
+        fixed.push({dir:positions[neighborId].clone().sub(vertex).normalize(),weight:1});
+      };
+      addFixed(ids[(vertexIndex-1+n)%n]);
+      addFixed(ids[(vertexIndex+1)%n]);
+      if(vertexNode.parent && !cycleSet.has(vertexNode.parent)) addFixed(vertexNode.parent);
+
+      const items=[];
+      const branchItems=new Map();
+      vertexNode.slots.forEach((value,slotIndex)=>{
+        if(value===null){ items.push({type:'open',slotIndices:[slotIndex]}); return; }
+        if(molecule.atomsById[value]){
+          const child=molecule.atomsById[value];
+          const dir=positions[child.id].clone().sub(vertex).normalize();
+          if(cycleSet.has(child.id)){
+            vertexNode.bondSlotDirs[slotIndex]=dir;
+          } else {
+            let item=branchItems.get(child.id);
+            if(!item){
+              item={type:'branch',child,slotIndices:[]};
+              branchItems.set(child.id,item);
+              items.push(item);
+            }
+            item.slotIndices.push(slotIndex);
+          }
+          return;
+        }
+        const ring=molecule.ringBonds[value];
+        if(ring){
+          const otherId=ring.a===id?ring.b:ring.a;
+          if(positions[otherId]) vertexNode.bondSlotDirs[slotIndex]=positions[otherId].clone().sub(vertex).normalize();
+        }
+      });
+      vertexNode.lonePairDirs.forEach((_,loneIndex)=>items.push({type:'lone',loneIndex}));
+
+      const frame={outward,normal};
+      const seeds=ringFreeDirectionSeeds(frame,items.length);
+      const weights=items.map(item=>item.type==='lone'?1.35:1);
+      const directions=optimizeRingDomains(fixed,seeds,weights);
+      items.forEach((item,i)=>{
+        const dir=directions[i];
+        if(item.type==='open'){
+          item.slotIndices.forEach(slotIndex=>{ vertexNode.bondSlotDirs[slotIndex]=dir.clone(); });
+        } else if(item.type==='lone'){
+          vertexNode.lonePairDirs[item.loneIndex]=dir.clone();
+        } else {
+          item.slotIndices.forEach(slotIndex=>{ vertexNode.bondSlotDirs[slotIndex]=dir.clone(); });
+          layoutRingBranch3D(item.child,vertexNode,vertex,dir,normal,positions,cycleSet);
+        }
+      });
+    });
+  });
+  applyRingAttachedDomainTargets(positions,ringAtomIds);
+  return ringAtomIds;
+}
+
 function computeRelaxedPositions(iterations){
   const atoms = allAtoms();
   if(atoms.length < 2) return null;
@@ -1920,6 +2159,9 @@ function computeRelaxedPositions(iterations){
     });
   }
 
+  // Ring geometry is an exact constraint, not another weak spring.
+  applyRegularRingPositions3D(pos);
+
   // recenter so the molecule doesn't slowly drift away from the camera's focal point
   const centroid = new THREE.Vector3();
   atoms.forEach(a=> centroid.add(pos[a.id]));
@@ -1976,11 +2218,175 @@ function repositionDependents(node){
   });
 }
 
+function ringFrameForAtom(atomId,positions){
+  const cycle=ringCycles().find(item=>item.ids.includes(atomId));
+  if(!cycle) return null;
+  const point=(id)=>positions?.[id] || molecule.atomsById[id].pos3D;
+  const center=new THREE.Vector3();
+  cycle.ids.forEach(id=>center.add(point(id)));
+  center.multiplyScalar(1/cycle.ids.length);
+  const outward=point(atomId).clone().sub(center);
+  const normal=new THREE.Vector3(0,0,1);
+  outward.addScaledVector(normal,-outward.dot(normal));
+  if(outward.lengthSq()<1e-7) outward.set(1,0,0);
+  outward.normalize();
+  return {cycle,center,normal,outward};
+}
+
+function ringAttachedDomainOrientation(node,back,result,parentFrame,positions){
+  const point=(id)=>positions?.[id] || molecule.atomsById[id].pos3D;
+  const base=[...result.bondSlotDirs,...result.lonePairDirs];
+  if(base.length===0) return result;
+
+  const movingIds=new Set();
+  (function collect(n){
+    treeChildren(n).forEach(child=>{
+      if(movingIds.has(child.id)) return;
+      movingIds.add(child.id);
+      collect(child);
+    });
+  })(node);
+
+  const nodePos=point(node.id), parentPos=point(node.parent);
+  const branchSign=Math.sign(nodePos.clone().sub(parentPos).dot(parentFrame.normal)) ||
+    (parentFrame.cycle.ids.indexOf(node.parent)%2===0?1:-1);
+  const preferredBond=parentFrame.outward.clone().multiplyScalar(0.72)
+    .add(parentFrame.normal.clone().multiplyScalar(branchSign*0.69)).normalize();
+  const bondCount=result.bondSlotDirs.length;
+  let bestDirs=base.map(v=>v.clone()), bestScore=Infinity;
+
+  // Rotating the complete AXmEn domain set around the fixed C–O axis preserves the exact
+  // 104.5°/107° VSEPR angles. Sample the azimuth and choose the orientation with the least
+  // repulsion from the ring and nearby atoms.
+  for(let deg=0;deg<360;deg+=5){
+    const radians=deg*Math.PI/180;
+    const candidate=base.map(v=>v.clone().applyAxisAngle(back,radians).normalize());
+    let score=0;
+    const addEnvironmentRepulsion=(sourcePos,sourceWeight)=>{
+      const delta=sourcePos.clone().sub(nodePos);
+      const dist=delta.length();
+      if(dist<0.1 || dist>5.5) return;
+      const envDir=delta.divideScalar(dist);
+      const envWeight=sourceWeight/(dist*dist);
+      candidate.forEach((dir,i)=>{
+        const domainWeight=i<bondCount?1:1.35;
+        score+=domainWeight*envWeight/Math.max(0.14,1-dir.dot(envDir));
+      });
+    };
+    allAtoms().forEach(other=>{
+      if(other.id===node.id || other.id===node.parent || movingIds.has(other.id)) return;
+      const otherPos=point(other.id);
+      addEnvironmentRepulsion(otherPos,1);
+      const loneDistance=ELEMENTS[other.element].radius*1.35+0.16;
+      other.lonePairDirs.forEach(loneDir=>{
+        addEnvironmentRepulsion(otherPos.clone().add(loneDir.clone().multiplyScalar(loneDistance)),1.35);
+      });
+    });
+    // Symmetric environments have equivalent minima. This small deterministic preference keeps
+    // all ring substituents facing consistently outward instead of flipping between frames.
+    if(bondCount>0) score+=(1-candidate[0].dot(preferredBond))*0.42;
+    if(score<bestScore){ bestScore=score; bestDirs=candidate; }
+  }
+  return {
+    bondSlotDirs:bestDirs.slice(0,bondCount),
+    lonePairDirs:bestDirs.slice(bondCount)
+  };
+}
+
+function ringFreeDirectionSeeds(frame,count){
+  const outward=frame.outward, normal=frame.normal;
+  const tangent=new THREE.Vector3().crossVectors(normal,outward).normalize();
+  if(count<=0) return [];
+  if(count===1) return [outward.clone()];
+  if(count===2){
+    return [1,-1].map(sign=>outward.clone().multiplyScalar(0.58)
+      .add(normal.clone().multiplyScalar(sign*0.815)).normalize());
+  }
+  if(count===3){
+    return [
+      outward.clone(),
+      outward.clone().multiplyScalar(-0.2).add(normal.clone().multiplyScalar(0.78)).add(tangent.clone().multiplyScalar(0.59)).normalize(),
+      outward.clone().multiplyScalar(-0.2).add(normal.clone().multiplyScalar(-0.78)).add(tangent.clone().multiplyScalar(-0.59)).normalize()
+    ];
+  }
+  return [outward,normal,tangent,normal.clone().negate()].slice(0,count).map(v=>v.clone().normalize());
+}
+
+// VSEPR as a small deterministic repulsion solver on the unit sphere. Existing bonds are fixed
+// by the actual polygon/branch geometry; empty bonding sites and lone pairs move until their
+// mutual electron-domain repulsion is minimized. Lone pairs carry a larger repulsion weight.
+function optimizeRingDomains(fixed,seeds,weights){
+  let dirs=seeds.map(v=>v.clone().normalize());
+  for(let iter=0;iter<150;iter++){
+    const previous=dirs.map(v=>v.clone());
+    const step=0.075-(iter/149)*0.055;
+    dirs=previous.map((v,i)=>{
+      const force=new THREE.Vector3();
+      fixed.forEach(domain=>{
+        const delta=v.clone().sub(domain.dir);
+        const dist=Math.max(0.08,delta.length());
+        force.add(delta.multiplyScalar(weights[i]*domain.weight/(dist*dist*dist)));
+      });
+      previous.forEach((other,j)=>{
+        if(i===j) return;
+        const delta=v.clone().sub(other);
+        const dist=Math.max(0.08,delta.length());
+        force.add(delta.multiplyScalar(weights[i]*weights[j]/(dist*dist*dist)));
+      });
+      // Only the component tangent to the sphere changes a direction's angle.
+      force.addScaledVector(v,-force.dot(v));
+      if(force.lengthSq()>1) force.normalize();
+      return v.clone().addScaledVector(force,step).normalize();
+    });
+  }
+  return dirs;
+}
+
+function resyncRingDirections(node,frame){
+  const fixed=[];
+  const seenNeighbors=new Set();
+  if(node.parent && molecule.atomsById[node.parent]){
+    const parent=molecule.atomsById[node.parent];
+    const back=parent.pos3D.clone().sub(node.pos3D).normalize();
+    node.dirFromParent=back.clone().negate();
+    fixed.push({dir:back,weight:1});
+    seenNeighbors.add(parent.id);
+  }
+
+  const openIndices=[];
+  node.slots.forEach((value,index)=>{
+    if(value===null){ openIndices.push(index); return; }
+    let neighbor=null;
+    if(molecule.atomsById[value]) neighbor=molecule.atomsById[value];
+    else if(molecule.ringBonds[value]){
+      const ring=molecule.ringBonds[value];
+      neighbor=molecule.atomsById[ring.a===node.id?ring.b:ring.a];
+    }
+    if(!neighbor) return;
+    const dir=neighbor.pos3D.clone().sub(node.pos3D).normalize();
+    node.bondSlotDirs[index]=dir.clone();
+    if(!seenNeighbors.has(neighbor.id)){
+      seenNeighbors.add(neighbor.id);
+      fixed.push({dir,weight:1});
+    }
+  });
+
+  const loneCount=node.lonePairDirs.length;
+  const movableCount=openIndices.length+loneCount;
+  if(movableCount===0) return;
+  const seeds=ringFreeDirectionSeeds(frame,movableCount);
+  const weights=[...openIndices.map(()=>1),...Array(loneCount).fill(1.35)];
+  const optimized=optimizeRingDomains(fixed,seeds,weights);
+  openIndices.forEach((slotIndex,i)=>{ node.bondSlotDirs[slotIndex]=optimized[i]; });
+  node.lonePairDirs=optimized.slice(openIndices.length).map(v=>v.clone());
+}
+
 // after relaxation moves a node, its bondSlotDirs/lonePairDirs (the LOCAL VSEPR shape) are
-// re-derived from its actual new direction to its parent — same cone-math as at creation, just
-// re-aimed. node.slots itself (which child owns which index) is untouched; only the directions
-// those indices point in are refreshed.
+// re-derived from the actual bonds. Ring atoms use every real neighbor, including the ring
+// closure; ordinary tree atoms retain the exact parent-based VSEPR builders used at creation.
 function resyncLocalDirections(node){
+  const ringFrame=ringFrameForAtom(node.id);
+  if(ringFrame){ resyncRingDirections(node,ringFrame); return; }
   if(!node.parent) return; // root keeps its original canonical orientation as the anchor frame
   const el = ELEMENTS[node.element];
   const total = el.bonds + el.lone;
@@ -1989,9 +2395,36 @@ function resyncLocalDirections(node){
   if(!parent) return;
   const back = new THREE.Vector3().subVectors(parent.pos3D, node.pos3D).normalize();
   node.dirFromParent = back.clone().negate();
-  const result = computeChildDomainDirections(el, back, node.bondOrder||1);
+  let result = computeChildDomainDirections(el, back, node.bondOrder||1);
+  const parentRingFrame=ringFrameForAtom(parent.id);
+  if(parentRingFrame && el.lone>0){
+    result=ringAttachedDomainOrientation(node,back,result,parentRingFrame);
+  }
   node.bondSlotDirs = result.bondSlotDirs;
   node.lonePairDirs = result.lonePairDirs;
+}
+
+let lastLiveRingDomainSync=0;
+function syncRingAttachedDomainsLive(){
+  allAtoms().forEach(node=>{
+    if(!node.parent || ELEMENTS[node.element].lone===0) return;
+    const parent=molecule.atomsById[node.parent];
+    const parentRingFrame=parent && ringFrameForAtom(parent.id);
+    if(!parentRingFrame) return;
+    const back=parent.pos3D.clone().sub(node.pos3D).normalize();
+    let result=computeChildDomainDirections(ELEMENTS[node.element],back,node.bondOrder||1);
+    result=ringAttachedDomainOrientation(node,back,result,parentRingFrame);
+    node.dirFromParent=back.clone().negate();
+    node.bondSlotDirs=result.bondSlotDirs.map((target,i)=>{
+      const current=node.bondSlotDirs[i];
+      return current ? current.clone().lerp(target,0.28).normalize() : target.clone();
+    });
+    node.lonePairDirs=result.lonePairDirs.map((target,i)=>{
+      const current=node.lonePairDirs[i];
+      return current ? current.clone().lerp(target,0.28).normalize() : target.clone();
+    });
+    repositionDependents(node);
+  });
 }
 
 let relaxTimer = null;
@@ -2006,7 +2439,10 @@ function scheduleRelax(delay){
 // physics settles, snap each lone-pair vertex's real (bonded) children back onto the exact
 // VSEPR-refined directions computed by resyncLocalDirections, preserving bond length.
 function enforceLonePairAngles(){
+  const ringAtoms=new Set(ringCycles().flatMap(cycle=>cycle.ids));
   allAtoms().forEach(node=>{
+    // Moving a ring vertex's child subtree would pull part of the polygon out of shape.
+    if(ringAtoms.has(node.id)) return;
     const el = ELEMENTS[node.element];
     if(!(el.bonds+el.lone===4 && COMPRESSED_ANGLE[el.lone])) return;
     node.slots.forEach((cid,i)=>{
@@ -2055,6 +2491,11 @@ function runRelaxation(){
       if(selectionHalos[a.id]) selectionHalos[a.id].position.copy(a.pos3D);
       repositionDependents(a);
     });
+    const liveNow=performance.now();
+    if(liveNow-lastLiveRingDomainSync>50){
+      lastLiveRingDomainSync=liveNow;
+      syncRingAttachedDomainsLive();
+    }
     bondListDesc().forEach(({parent,child})=>{
       if(child.bondMesh) updateBondMeshGroupTransform(child.bondMesh, parent.pos3D, child.pos3D, child.bondOrder||1);
     });
@@ -2065,8 +2506,12 @@ function runRelaxation(){
     updateAngleBadge(); // live-update the readout so the number visibly settles as the structure does
   }, ()=>{
     if(myGen !== relaxGeneration) return;
-    atoms.forEach(a=> resyncLocalDirections(a));
-    enforceLonePairAngles(); // snap H-N-H / H-O-H etc. back to the exact VSEPR-refined angle
+    // Re-evaluate a few times so neighboring ring-bound oxygens see one another's newly chosen
+    // lone-pair directions in the same settle cycle instead of requiring repeated tidy clicks.
+    for(let pass=0;pass<4;pass++){
+      atoms.forEach(a=> resyncLocalDirections(a));
+      enforceLonePairAngles(); // snap H-N-H / H-O-H etc. back to the exact VSEPR-refined angle
+    }
     atoms.forEach(a=> repositionDependents(a));
     bondListDesc().forEach(({parent,child})=>{
       if(child.bondMesh) updateBondMeshGroupTransform(child.bondMesh, parent.pos3D, child.pos3D, child.bondOrder||1);
@@ -2076,8 +2521,17 @@ function runRelaxation(){
       if(a && b && rb.mesh) updateBondMeshGroupTransform(rb.mesh, a.pos3D, b.pos3D, rb.order||1);
     });
     rebuildDipoleLayer();
+    fitCameraToMolecule();
     updateConnectAction(); updateAngleBadge();
   }, easeOutCubic);
+}
+
+function tidyMolecule(){
+  if(!molecule.root){ showToast('먼저 분자를 만들어 주세요.'); return; }
+  clearTimeout(relaxTimer);
+  resetMoleculeView();
+  runRelaxation();
+  showToast('고리·결합 방향·화면 시점을 다시 정돈하고 있어요.',2200);
 }
 
 /* ---------- 7. DIPOLE LAYER (full rebuild on toggle / mutation) ---------- */
@@ -2141,15 +2595,191 @@ function clearSelection(){
   updateConnectAction(); updateAngleBadge();
 }
 
-// bond order the system will use if the two currently-selected atoms are connected —
-// capped by whichever atom has less open capacity left, and by 3 (single/double/triple).
-function autoBondOrderFor(a, b){
+// Highest bond order both selected atoms can still support. The UI exposes every order from
+// single through this maximum instead of silently choosing one.
+function maxBondOrderFor(a, b){
   const openA = a.slots.filter(s=>s===null).length;
   const openB = b.slots.filter(s=>s===null).length;
   return Math.max(0, Math.min(3, openA, openB, ELEMENTS[a.element].bonds, ELEMENTS[b.element].bonds));
 }
 function findRingBondBetween(idA, idB){
   return Object.values(molecule.ringBonds).find(rb => (rb.a===idA&&rb.b===idB) || (rb.a===idB&&rb.b===idA)) || null;
+}
+
+function findExistingBondBetween(idA,idB){
+  const a=molecule.atomsById[idA], b=molecule.atomsById[idB];
+  if(!a||!b) return null;
+  if(a.parent===b.id) return {type:'tree',parent:b,child:a,a,b,order:a.bondOrder||1};
+  if(b.parent===a.id) return {type:'tree',parent:a,child:b,a,b,order:b.bondOrder||1};
+  const ring=findRingBondBetween(idA,idB);
+  return ring ? {type:'ring',ring,a,b,order:ring.order||1} : null;
+}
+
+// An existing bond already consumes `current` pairs. Each open slot on BOTH endpoints can
+// contribute one more shared pair, so the reachable maximum is current + the smaller reserve.
+function maxOrderForExistingBond(info){
+  const openA=info.a.slots.filter(s=>s===null).length;
+  const openB=info.b.slots.filter(s=>s===null).length;
+  return Math.min(3,info.order+Math.min(openA,openB),ELEMENTS[info.a.element].bonds,ELEMENTS[info.b.element].bonds);
+}
+
+function disposeSlotMarker(node,index){
+  const marker=node.slotMeshes[index];
+  if(marker){ moleculeGroup.remove(marker); disposeObject3D(marker); }
+  node.slotMeshes[index]=null;
+}
+
+function rebuildOpenSlotMarkers(node){
+  node.slotMeshes.forEach(marker=>{
+    if(marker){ moleculeGroup.remove(marker); disposeObject3D(marker); }
+  });
+  node.slotMeshes=node.bondSlotDirs.map((_,index)=> node.slots[index]===null ? makeSlotMarker(node,index) : null);
+}
+
+// If a node's own slot array changes length, every child/ring bond that stores those slot
+// indices must follow it. This keeps later save, delete, disconnect, and undo operations valid.
+function remapOwnedSlotReferences(node){
+  allAtoms().forEach(child=>{
+    if(child.parent!==node.id) return;
+    const indices=[];
+    node.slots.forEach((token,index)=>{ if(token===child.id) indices.push(index); });
+    if(indices.length){
+      child.parentSlotIndex=indices[0];
+      child.consumedSlotIndices=indices;
+      const history=actionHistory.find(entry=>entry.childId===child.id);
+      if(history){ history.slotIndex=indices[0]; history.consumedSlotIndices=indices.slice(); }
+    }
+  });
+  Object.values(molecule.ringBonds).forEach(rb=>{
+    const indices=[];
+    node.slots.forEach((token,index)=>{ if(token===rb.id) indices.push(index); });
+    if(rb.a===node.id) rb.consumedA=indices;
+    if(rb.b===node.id) rb.consumedB=indices;
+  });
+}
+
+// Rebuild the child-side VSEPR domains when the bond to its parent changes order. Increasing
+// the order removes only EMPTY child slots; occupied branches are retained and remapped.
+function rebuildIncomingBondDomains(node,newOrder){
+  const targetLength=Math.max(0,ELEMENTS[node.element].bonds-newOrder);
+  const nextSlots=node.slots.slice();
+  while(nextSlots.length>targetLength){
+    let removable=-1;
+    for(let i=nextSlots.length-1;i>=0;i--){ if(nextSlots[i]===null){ removable=i; break; } }
+    if(removable<0) return false;
+    nextSlots.splice(removable,1);
+  }
+  while(nextSlots.length<targetLength) nextSlots.push(null);
+
+  const parent=molecule.atomsById[node.parent];
+  if(!parent) return false;
+  const back=new THREE.Vector3().subVectors(parent.pos3D,node.pos3D).normalize();
+  const domains=computeChildDomainDirections(ELEMENTS[node.element],back,newOrder);
+  node.slots=nextSlots;
+  node.bondOrder=newOrder;
+  node.bondSlotDirs=domains.bondSlotDirs;
+  node.lonePairDirs=domains.lonePairDirs;
+  remapOwnedSlotReferences(node);
+  resyncLocalDirections(node);
+  rebuildOpenSlotMarkers(node);
+  repositionDependents(node);
+  return true;
+}
+
+function rebuildTreeBondMesh(child){
+  const parent=molecule.atomsById[child.parent];
+  if(!parent) return;
+  if(child.bondMesh){ moleculeGroup.remove(child.bondMesh); disposeObject3D(child.bondMesh); }
+  const data=makeBondMeshGroup(parent.pos3D,child.pos3D,child.bondOrder||1);
+  moleculeGroup.add(data.group);
+  child.bondMesh=data.group;
+  animateBondGroupGrowth(data,300);
+}
+
+function rebuildRingBondMesh(rb){
+  const a=molecule.atomsById[rb.a], b=molecule.atomsById[rb.b];
+  if(!a||!b) return;
+  if(rb.mesh){ moleculeGroup.remove(rb.mesh); disposeObject3D(rb.mesh); }
+  const data=makeBondMeshGroup(a.pos3D,b.pos3D,rb.order||1);
+  moleculeGroup.add(data.group);
+  rb.mesh=data.group;
+  animateBondGroupGrowth(data,300);
+}
+
+function changeTreeBondOrder(info,newOrder){
+  const parent=info.parent, child=info.child;
+  const current=child.bondOrder||1;
+  if(newOrder===current) return true;
+  const delta=newOrder-current;
+  const oldConsumed=(child.consumedSlotIndices||[child.parentSlotIndex]).slice();
+  let nextConsumed=oldConsumed.slice();
+
+  if(delta>0){
+    const extra=[];
+    parent.slots.forEach((token,index)=>{ if(token===null&&extra.length<delta) extra.push(index); });
+    if(extra.length<delta || child.slots.filter(s=>s===null).length<delta) return false;
+    extra.forEach(index=>{ disposeSlotMarker(parent,index); parent.slots[index]=child.id; });
+    nextConsumed=nextConsumed.concat(extra);
+  } else {
+    const keepCount=newOrder;
+    const released=nextConsumed.slice(keepCount);
+    nextConsumed=nextConsumed.slice(0,keepCount);
+    released.forEach(index=>{
+      parent.slots[index]=null;
+      parent.slotMeshes[index]=makeSlotMarker(parent,index);
+    });
+  }
+
+  child.consumedSlotIndices=nextConsumed;
+  child.parentSlotIndex=nextConsumed[0];
+  if(!rebuildIncomingBondDomains(child,newOrder)) return false;
+  const history=actionHistory.find(entry=>entry.childId===child.id);
+  if(history){ history.slotIndex=child.parentSlotIndex; history.consumedSlotIndices=nextConsumed.slice(); }
+  resyncLocalDirections(parent);
+  repositionDependents(parent);
+  rebuildTreeBondMesh(child);
+  return true;
+}
+
+function changeRingBondOrder(info,newOrder){
+  const rb=info.ring, a=info.a, b=info.b;
+  const current=rb.order||1;
+  if(newOrder===current) return true;
+  const delta=newOrder-current;
+  if(delta>0){
+    const extraA=[],extraB=[];
+    a.slots.forEach((token,index)=>{ if(token===null&&extraA.length<delta) extraA.push(index); });
+    b.slots.forEach((token,index)=>{ if(token===null&&extraB.length<delta) extraB.push(index); });
+    if(extraA.length<delta||extraB.length<delta) return false;
+    extraA.forEach(index=>{ disposeSlotMarker(a,index); a.slots[index]=rb.id; });
+    extraB.forEach(index=>{ disposeSlotMarker(b,index); b.slots[index]=rb.id; });
+    rb.consumedA=rb.consumedA.concat(extraA);
+    rb.consumedB=rb.consumedB.concat(extraB);
+  } else {
+    const releaseA=rb.consumedA.slice(newOrder), releaseB=rb.consumedB.slice(newOrder);
+    rb.consumedA=rb.consumedA.slice(0,newOrder);
+    rb.consumedB=rb.consumedB.slice(0,newOrder);
+    releaseA.forEach(index=>{ a.slots[index]=null; a.slotMeshes[index]=makeSlotMarker(a,index); });
+    releaseB.forEach(index=>{ b.slots[index]=null; b.slotMeshes[index]=makeSlotMarker(b,index); });
+  }
+  rb.order=newOrder;
+  resyncLocalDirections(a); resyncLocalDirections(b);
+  repositionDependents(a); repositionDependents(b);
+  rebuildRingBondMesh(rb);
+  return true;
+}
+
+function changeBondOrderBetween(idA,idB,newOrder){
+  const info=findExistingBondBetween(idA,idB);
+  if(!info) return false;
+  newOrder=Math.max(1,Math.min(3,Number(newOrder)||1));
+  if(newOrder>maxOrderForExistingBond(info)) return false;
+  const changed=info.type==='tree' ? changeTreeBondOrder(info,newOrder) : changeRingBondOrder(info,newOrder);
+  if(!changed) return false;
+  rebuildDipoleLayer();
+  refreshAll();
+  scheduleRelax(60);
+  return true;
 }
 
 function updateConnectAction(){
@@ -2160,35 +2790,34 @@ function updateConnectAction(){
   const a = molecule.atomsById[idA], b = molecule.atomsById[idB];
   if(!a || !b){ btn.classList.remove('show'); return; }
 
-  if(a.parent===b.id || b.parent===a.id){
-    btn.textContent = '이미 결합으로 연결되어 있어요';
-    btn.disabled = true;
-    btn.dataset.mode = '';
+  const existing=findExistingBondBetween(idA,idB);
+  if(existing){
+    const maxOrder=maxOrderForExistingBond(existing);
+    const names={1:'단일 —',2:'이중 =',3:'삼중 ≡'};
+    const choices=[];
+    for(let order=1;order<=maxOrder;order++){
+      const current=order===existing.order;
+      choices.push(`<button class="ca-option" data-connect-mode="change" data-order="${order}" ${current?'disabled aria-current="true"':''}>${names[order]}${current?' · 현재':''}</button>`);
+    }
+    const disconnect=existing.type==='ring'
+      ? `<button class="ca-disconnect" data-connect-mode="disconnect" data-ring-id="${existing.ring.id}">⊘ 결합 끊기</button>`
+      : '';
+    btn.innerHTML=`<span class="ca-label">${ELEMENTS[a.element].symbol}–${ELEMENTS[b.element].symbol} 결합 차수</span>${choices.join('')}${disconnect}`;
     btn.classList.add('show');
     return;
   }
-  const existingRing = findRingBondBetween(idA, idB);
-  if(existingRing){
-    btn.textContent = `⊘ ${ELEMENTS[a.element].symbol}–${ELEMENTS[b.element].symbol} 결합 끊기`;
-    btn.disabled = false;
-    btn.dataset.mode = 'disconnect';
-    btn.dataset.ringId = existingRing.id;
+  const maxOrder = maxBondOrderFor(a, b);
+  if(maxOrder<=0){
+    btn.innerHTML = '<span class="ca-status">남은 결합 자리가 없어 연결할 수 없어요</span>';
     btn.classList.add('show');
     return;
   }
-  const order = autoBondOrderFor(a, b);
-  if(order<=0){
-    btn.textContent = '남은 결합 자리가 없어 연결할 수 없어요';
-    btn.disabled = true;
-    btn.dataset.mode = '';
-    btn.classList.add('show');
-    return;
+  const labels={1:'단일 —',2:'이중 =',3:'삼중 ≡'};
+  const choices=[];
+  for(let order=1;order<=maxOrder;order++){
+    choices.push(`<button class="ca-option" data-connect-mode="connect" data-order="${order}">${labels[order]}</button>`);
   }
-  const sym = order===3?'≡':order===2?'=':'—';
-  btn.textContent = `${ELEMENTS[a.element].symbol}${sym}${ELEMENTS[b.element].symbol} 로 연결하기`;
-  btn.disabled = false;
-  btn.dataset.mode = 'connect';
-  btn.dataset.order = order;
+  btn.innerHTML = `<span class="ca-label">${ELEMENTS[a.element].symbol}–${ELEMENTS[b.element].symbol} 결합 선택</span>${choices.join('')}`;
   btn.classList.add('show');
 }
 
@@ -2371,7 +3000,7 @@ function createRingBond(idA, idB, order){
   if(findRingBondBetween(idA, idB)) return null;
   const slotA = firstOpenSlot(a), slotB = firstOpenSlot(b);
   if(slotA<0 || slotB<0) return null;
-  const maxOrder = autoBondOrderFor(a, b);
+  const maxOrder = maxBondOrderFor(a, b);
   order = Math.max(1, Math.min(order || maxOrder, maxOrder));
   const consumedA = findConsumableSlots(a, slotA, order);
   const consumedB = findConsumableSlots(b, slotB, order);
@@ -2401,7 +3030,8 @@ function createRingBond(idA, idB, order){
   actionHistory.push({ type:'ring', ringId:id });
   rebuildDipoleLayer();
   refreshAll();
-  scheduleRelax();
+  // Closing a loop is a large geometric change; regularize it almost immediately.
+  scheduleRelax(60);
   return rb;
 }
 
@@ -2424,21 +3054,29 @@ function disconnectRingBond(ringId){
 }
 
 function wireConnectAction(){
-  const btn = document.getElementById('connect-action');
-  if(!btn) return;
-  btn.addEventListener('click', ()=>{
-    if(btn.disabled || selectedAtomIds.size!==2) return;
+  const panel = document.getElementById('connect-action');
+  if(!panel) return;
+  panel.addEventListener('click', (e)=>{
+    const action=e.target.closest('[data-connect-mode]');
+    if(!action || selectedAtomIds.size!==2) return;
     const [idA, idB] = Array.from(selectedAtomIds);
-    if(btn.dataset.mode==='connect'){
-      const order = parseInt(btn.dataset.order, 10);
+    if(action.dataset.connectMode==='connect'){
+      const order = parseInt(action.dataset.order, 10);
       const a = molecule.atomsById[idA], b = molecule.atomsById[idB];
       const rb = createRingBond(idA, idB, order);
       if(rb && a && b){
         const sym = order===3?'≡':order===2?'=':'—';
         showToast(`${ELEMENTS[a.element].symbol}${sym}${ELEMENTS[b.element].symbol}(으)로 연결했어요`);
       }
-    } else if(btn.dataset.mode==='disconnect'){
-      disconnectRingBond(btn.dataset.ringId);
+    } else if(action.dataset.connectMode==='change'){
+      const order=parseInt(action.dataset.order,10);
+      const a=molecule.atomsById[idA], b=molecule.atomsById[idB];
+      if(changeBondOrderBetween(idA,idB,order) && a && b){
+        const sym=order===3?'≡':order===2?'=':'—';
+        showToast(`${ELEMENTS[a.element].symbol}${sym}${ELEMENTS[b.element].symbol} 결합으로 바꿨어요`);
+      }
+    } else if(action.dataset.connectMode==='disconnect'){
+      disconnectRingBond(action.dataset.ringId);
       showToast('결합을 끊었어요.');
     }
     clearSelection();
@@ -2498,6 +3136,133 @@ function branchLewisPorts(travelPort, childCount){
   return [travelPort, ...sidePorts];
 }
 
+function treePathBetween(idA,idB){
+  const fromA=[];
+  const indexA=new Map();
+  let current=idA;
+  while(current && molecule.atomsById[current]){
+    indexA.set(current,fromA.length);
+    fromA.push(current);
+    current=molecule.atomsById[current].parent;
+  }
+  const fromB=[];
+  current=idB;
+  while(current && !indexA.has(current) && molecule.atomsById[current]){
+    fromB.push(current);
+    current=molecule.atomsById[current].parent;
+  }
+  if(!current || !indexA.has(current)) return [];
+  return fromA.slice(0,indexA.get(current)+1).concat(fromB.reverse());
+}
+
+function ringCycles(){
+  return Object.values(molecule.ringBonds||{}).map(ring=>({
+    ring,
+    ids:treePathBetween(ring.a,ring.b)
+  })).filter(cycle=>cycle.ids.length>=3);
+}
+
+function translateLayoutSubtree(node,dx,dy,positions,blocked,visited){
+  if(!node || blocked.has(node.id) || visited.has(node.id)) return;
+  visited.add(node.id);
+  if(positions[node.id]){
+    positions[node.id]={x:positions[node.id].x+dx,y:positions[node.id].y+dy};
+  }
+  treeChildren(node).forEach(child=>translateLayoutSubtree(child,dx,dy,positions,blocked,visited));
+}
+
+function branchFanOffsets(count,rootBranch){
+  if(count<=1) return [0];
+  if(count===2) return rootBranch ? [-34,34] : [-46,46];
+  if(count===3) return [-58,0,58];
+  return [-72,-24,24,72].slice(0,count);
+}
+
+function layoutRingBranch2D(node,origin,angleDeg,sideLength,positions,blocked,affected,depth){
+  if(!node || blocked.has(node.id)) return;
+  const d=dirFromAngle(angleDeg);
+  const length=sideLength*(depth===0?1.08:1);
+  const next={x:origin.x+d.x*length,y:origin.y+d.y*length};
+  positions[node.id]=next;
+  affected.add(node.id);
+  const children=treeChildren(node).filter(child=>!blocked.has(child.id));
+  const offsets=branchFanOffsets(children.length,false);
+  children.forEach((child,i)=>{
+    layoutRingBranch2D(child,next,angleDeg+offsets[i],sideLength,positions,blocked,affected,depth+1);
+  });
+}
+
+function repulsionLonePairVectors(node,positions,count){
+  const p=positions[node.id];
+  const occupied=getNeighborAtomIds(node).map(id=>positions[id]).filter(Boolean).map(q=>Math.atan2(q.y-p.y,q.x-p.x));
+  const chosen=[];
+  const angularDistance=(a,b)=>Math.acos(Math.max(-1,Math.min(1,Math.cos(a-b))));
+  for(let pair=0;pair<count;pair++){
+    let best=0,bestScore=-Infinity;
+    for(let deg=0;deg<360;deg+=2){
+      const angle=deg*Math.PI/180;
+      const separations=occupied.concat(chosen).map(other=>angularDistance(angle,other));
+      const minSep=separations.length?Math.min(...separations):Math.PI;
+      const score=minSep*10+separations.reduce((sum,value)=>sum+value,0);
+      if(score>bestScore){ bestScore=score; best=angle; }
+    }
+    chosen.push(best);
+  }
+  return chosen.map(angle=>({x:Math.cos(angle),y:Math.sin(angle)}));
+}
+
+// Every ring-closure edge plus the tree path between its endpoints defines one cycle.
+// Place that cycle on a regular polygon. Off-ring branches are laid out again in the exterior
+// wedge of their own vertex; merely translating the old tree layout makes dense molecules such
+// as glucose pile their O/H substituents on top of the ring.
+function applyRegularRingLayouts(positions,sideLength){
+  const ringCenters={};
+  const ringEdgeKeys=new Set();
+  const reflowedIds=new Set();
+  ringCycles().forEach(({ids})=>{
+    const n=ids.length;
+    const cycleSet=new Set(ids);
+    const old={};
+    ids.forEach(id=>{ old[id]={...positions[id]}; });
+    const centroid=ids.reduce((sum,id)=>({x:sum.x+old[id].x/n,y:sum.y+old[id].y/n}),{x:0,y:0});
+    let anchorIndex=ids.findIndex(id=>{
+      const parent=molecule.atomsById[id]?.parent;
+      return !parent || !cycleSet.has(parent);
+    });
+    if(anchorIndex<0) anchorIndex=0;
+    const anchorId=ids[anchorIndex], anchor=old[anchorId];
+    const radial={x:anchor.x-centroid.x,y:anchor.y-centroid.y};
+    const anchorAngle=Math.hypot(radial.x,radial.y)>1e-5 ? Math.atan2(radial.y,radial.x) : -Math.PI/2;
+    let area=0;
+    ids.forEach((id,i)=>{
+      const a=old[id],b=old[ids[(i+1)%n]];
+      area+=a.x*b.y-b.x*a.y;
+    });
+    const direction=area<0?-1:1;
+    const radius=sideLength/(2*Math.sin(Math.PI/n));
+    const center={x:anchor.x-radius*Math.cos(anchorAngle),y:anchor.y-radius*Math.sin(anchorAngle)};
+    ids.forEach((id,i)=>{
+      const theta=anchorAngle+direction*(i-anchorIndex)*2*Math.PI/n;
+      const next={x:center.x+radius*Math.cos(theta),y:center.y+radius*Math.sin(theta)};
+      positions[id]=next;
+      ringCenters[id]=center;
+      const nextId=ids[(i+1)%n];
+      ringEdgeKeys.add(`${id}|${nextId}`);
+      ringEdgeKeys.add(`${nextId}|${id}`);
+    });
+    ids.forEach(id=>{
+      const vertex=positions[id];
+      const outward=Math.atan2(vertex.y-center.y,vertex.x-center.x)*180/Math.PI;
+      const branches=treeChildren(molecule.atomsById[id]).filter(child=>!cycleSet.has(child.id));
+      const offsets=branchFanOffsets(branches.length,true);
+      branches.forEach((child,i)=>{
+        layoutRingBranch2D(child,vertex,outward+offsets[i],sideLength,positions,cycleSet,reflowedIds,0);
+      });
+    });
+  });
+  return {ringCenters,ringEdgeKeys,reflowedIds};
+}
+
 // A Lewis structure is a bookkeeping diagram, not a perspective drawing. Every tree bond is
 // therefore routed on a horizontal/vertical port, and lone pairs occupy the unused ports.
 function layoutLewis2D(){
@@ -2539,6 +3304,7 @@ function layoutLewis2D(){
   }
 
   if(molecule.root) place(molecule.root,0,0,'east',0);
+  const ringLayout=applyRegularRingLayouts(positions,LEWIS_GRID);
 
   // Ring closures are not part of the tree walk, but their occupied ports still matter when
   // deciding where lone-pair dots belong.
@@ -2553,6 +3319,21 @@ function layoutLewis2D(){
   allAtoms().forEach(node=>{
     const used = usedPorts[node.id] || new Set();
     const count = node.lonePairDirs.length;
+    const ringCenter=ringLayout.ringCenters[node.id];
+    if(ringCenter && count>0){
+      const p=positions[node.id];
+      const base=Math.atan2(p.y-ringCenter.y,p.x-ringCenter.x);
+      const spreads=count===1?[0]:count===2?[-35,35]:count===3?[-55,0,55]:[-70,-25,25,70];
+      lonePorts[node.id]=spreads.map(deg=>{
+        const angle=base+deg*Math.PI/180;
+        return {x:Math.cos(angle),y:Math.sin(angle)};
+      });
+      return;
+    }
+    if(ringLayout.reflowedIds.has(node.id) && count>0){
+      lonePorts[node.id]=repulsionLonePairVectors(node,positions,count);
+      return;
+    }
     let available = CARDINAL_PORTS.map(p=>p.name).filter(name=>!used.has(name));
     if(count===1 && used.size===1){
       const onlyUsed = Array.from(used)[0];
@@ -2638,6 +3419,8 @@ function layoutStructural2D(){
   }
 
   if(molecule.root) place(molecule.root,{x:0,y:0},180,0);
+  const ringLayout=applyRegularRingLayouts(positions,STRUCT_BOND_LEN);
+  ringLayout.ringEdgeKeys.forEach(key=>{ delete bondStyles[key]; });
   return {positions,bondStyles};
 }
 
@@ -2686,7 +3469,8 @@ function renderLewisSVG(){
   allAtoms().forEach(node=>{
     const p=positions[node.id];
     (lonePorts[node.id]||[]).forEach(portName=>{
-      const port=PORT_BY_NAME[portName], d={x:port.dx,y:port.dy};
+      const port=typeof portName==='string' ? PORT_BY_NAME[portName] : portName;
+      const d={x:port.dx===undefined?port.x:port.dx,y:port.dy===undefined?port.y:port.dy};
       const bx=p.x+d.x*0.44, by=p.y+d.y*0.44;
       const px=-d.y, py=d.x;
       [-1,1].forEach(k=>{
@@ -2814,7 +3598,7 @@ function renderPropertiesPanel(){
       <div class="panel-eyebrow">ATOM PROPERTIES</div>
       <div class="panel-title">원자 ${nodes.length}개 선택됨</div>
       <div class="panel-empty">${nodes.length===2
-        ? '화면 위쪽의 연결 버튼으로 이 두 원자를 직접 이어 결합을 만들 수 있어요. 몇 중 결합인지는 남은 결합 자리를 보고 자동으로 정해져요.'
+        ? '화면 위쪽에서 두 원자를 새로 연결하거나, 이미 연결된 결합을 가능한 단일·이중·삼중결합으로 바꿀 수 있어요.'
         : nodes.length===3
           ? '가운데 원자가 나머지 두 원자와 모두 결합돼 있으면, 화면 위쪽에 결합각이 자동으로 표시돼요.'
           : 'Backspace를 누르면 선택한 원자들이 한 번에 삭제돼요.'}</div>
@@ -2981,6 +3765,7 @@ function refreshFormulaBadge(){
     statusEl.textContent = `⚠ 열린 결합 자리 ${openCount}개 남음`;
     statusEl.classList.add('show');
   } else {
+    statusEl.textContent = '';
     statusEl.classList.remove('show');
   }
 }
@@ -3265,6 +4050,7 @@ function wireSaveLoad(){
 function wireDock(){
   document.getElementById('btn-reset').addEventListener('click', resetMolecule);
   document.getElementById('btn-undo').addEventListener('click', undoLast);
+  document.getElementById('btn-tidy').addEventListener('click', tidyMolecule);
 
   const presetBtn = document.getElementById('btn-preset');
   const presetPop = document.getElementById('preset-pop');
@@ -3305,6 +4091,13 @@ function wireDock(){
     showLonePairs = !showLonePairs;
     loneToggle.classList.toggle('on', showLonePairs);
     allAtoms().forEach(n=> n.lonePairMeshes.forEach(m=> m.visible = showLonePairs));
+  });
+
+  const labelToggle = document.getElementById('toggle-labels');
+  labelToggle.addEventListener('click', ()=>{
+    showLabels = !showLabels;
+    labelToggle.classList.toggle('on', showLabels);
+    allAtoms().forEach(n=>{ if(n.meshLabel) n.meshLabel.visible=showLabels; });
   });
 
   const dipoleToggle = document.getElementById('toggle-dipole');
