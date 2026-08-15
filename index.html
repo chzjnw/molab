@@ -1,0 +1,3371 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>분자 배치 실험실 — 전기음성도와 쌍극자 모멘트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* ============================================================
+   TOKENS — "실험 노트 / 계측기" (lab notebook / instrument) system
+   ============================================================ */
+:root{
+  --ink:#1c2024;
+  --ink-soft:#565f66;
+  --ink-faint:#8b939a;
+  --paper:#eef1ea;
+  --paper-raised:#fbfcf9;
+  --paper-line:#d7ddd0;
+  --chamber-top:#181d26;
+  --chamber-bottom:#0a0d13;
+  --chamber-grid:rgba(255,255,255,0.045);
+  --cobalt:#3a5a9c;
+  --cobalt-deep:#263c66;
+  --cobalt-pale:#c9d5ec;
+  --amber:#b9701f;
+  --amber-pale:#f0d9b3;
+  --verdigris:#3f8577;
+  --verdigris-pale:#c8e3dc;
+  --rose:#a83f56;
+  --rose-pale:#ecc9d1;
+  --radius-card:10px;
+  --radius-sm:6px;
+  --radius-pill:999px;
+  --shadow-card:0 1px 2px rgba(28,32,36,0.06), 0 8px 24px -12px rgba(28,32,36,0.18);
+  --shadow-float:0 4px 14px -4px rgba(10,13,19,0.45);
+  --ease-out:cubic-bezier(.16,.8,.32,1);
+  --ease-back:cubic-bezier(.34,1.56,.64,1);
+  --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-sans:'IBM Plex Sans KR', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family:var(--font-sans);
+  color:var(--ink);
+  background:var(--paper);
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+button{font-family:inherit;}
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+#app{
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+  height:100dvh;
+}
+
+/* ---- Header ---- */
+header{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:10px 20px;
+  background:var(--paper-raised);
+  border-bottom:1px solid var(--paper-line);
+  z-index:20;
+}
+.brand{
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+}
+.brand .eyebrow{
+  font-family:var(--font-mono);
+  font-size:10.5px;
+  letter-spacing:.14em;
+  color:var(--cobalt);
+  background:var(--cobalt-pale);
+  padding:3px 7px;
+  border-radius:var(--radius-sm);
+  font-weight:600;
+}
+.brand h1{
+  font-size:16.5px;
+  margin:0;
+  font-weight:600;
+  letter-spacing:-.01em;
+}
+.brand .sub{
+  font-size:12px;
+  color:var(--ink-faint);
+  display:none;
+}
+@media(min-width:720px){ .brand .sub{ display:inline; } }
+
+.help-btn{
+  width:30px;height:30px;
+  border-radius:50%;
+  border:1px solid var(--paper-line);
+  background:var(--paper-raised);
+  color:var(--ink-soft);
+  font-family:var(--font-mono);
+  font-weight:600;
+  font-size:13px;
+  cursor:pointer;
+  transition:all .2s var(--ease-out);
+  flex:0 0 auto;
+}
+.help-btn:hover{ background:var(--cobalt); color:#fff; border-color:var(--cobalt); transform:translateY(-1px); }
+
+/* ---- Main split ---- */
+main{
+  flex:1 1 auto;
+  display:flex;
+  min-height:0;
+}
+@media(max-width:880px){
+  main{ flex-direction:column; }
+}
+
+/* ---- Viewport (specimen chamber) ---- */
+#viewport-wrap{
+  position:relative;
+  flex:1 1 auto;
+  min-width:0;
+  min-height:0;
+  background:
+    radial-gradient(ellipse at 50% 30%, #1e2432 0%, var(--chamber-top) 45%, var(--chamber-bottom) 100%);
+  overflow:hidden;
+}
+#viewport-wrap::before{
+  /* faint millimeter-grid, specimen-chamber texture */
+  content:"";
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(var(--chamber-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--chamber-grid) 1px, transparent 1px);
+  background-size:28px 28px;
+  pointer-events:none;
+  mask-image:radial-gradient(ellipse at 50% 45%, black 55%, transparent 85%);
+}
+#three-canvas{
+  position:absolute; inset:0;
+  display:block;
+  width:100%; height:100%;
+  cursor:grab;
+  touch-action:none;
+}
+#three-canvas.dragging{ cursor:grabbing; }
+
+/* specimen label = molecular formula badge */
+#formula-badge{
+  position:absolute;
+  top:14px; left:14px;
+  background:var(--paper-raised);
+  border:1px solid var(--paper-line);
+  border-radius:var(--radius-sm);
+  padding:8px 12px 7px;
+  box-shadow:var(--shadow-float);
+  font-family:var(--font-mono);
+  z-index:5;
+  clip-path:polygon(0 0,100% 0,100% 100%,10px 100%,0 calc(100% - 10px));
+  max-width:min(60vw, 320px);
+}
+#formula-badge .f-label{
+  font-size:9px; letter-spacing:.12em; color:var(--ink-faint); display:block; margin-bottom:2px;
+}
+#formula-badge .f-formula{
+  font-size:19px; font-weight:600; color:var(--ink); line-height:1.1;
+}
+#formula-badge .f-status{
+  font-size:10.5px; color:var(--amber); margin-top:3px; display:none; font-family:var(--font-sans);
+}
+#formula-badge .f-status.show{ display:block; }
+
+/* Unicode-monospace subscripts pad themselves to a full character cell, which is what
+   caused the big gap; real <sub> tags rendered in the proportional sans face fix that. */
+sub{
+  font-family:var(--font-sans);
+  font-size:0.66em;
+  font-weight:600;
+  line-height:0;
+  vertical-align:sub;
+  margin:0 0.01em;
+}
+
+/* floating bottom control dock */
+#control-dock{
+  position:absolute;
+  left:14px; right:14px; bottom:14px;
+  z-index:6;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  justify-content:space-between;
+}
+.dock-group{
+  display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+}
+.dock-btn{
+  font-family:var(--font-sans);
+  font-size:12.5px;
+  font-weight:500;
+  color:#eef1ea;
+  background:rgba(20,24,32,0.72);
+  border:1px solid rgba(255,255,255,0.14);
+  backdrop-filter:blur(6px);
+  padding:7px 12px;
+  border-radius:var(--radius-pill);
+  cursor:pointer;
+  transition:all .18s var(--ease-out);
+  display:flex; align-items:center; gap:6px;
+  white-space:nowrap;
+}
+.dock-btn:hover{ background:rgba(58,90,156,0.85); border-color:var(--cobalt); transform:translateY(-1px); }
+.dock-btn:active{ transform:translateY(0); }
+.dock-btn:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
+.dock-btn .k{ font-family:var(--font-mono); font-size:10px; opacity:.7; }
+
+.toggle-chip{
+  font-family:var(--font-sans);
+  font-size:11.5px;
+  color:#dfe4dc;
+  background:rgba(20,24,32,0.55);
+  border:1px solid rgba(255,255,255,0.12);
+  backdrop-filter:blur(6px);
+  padding:6px 10px 6px 8px;
+  border-radius:var(--radius-pill);
+  display:flex; align-items:center; gap:6px;
+  cursor:pointer;
+  user-select:none;
+  transition:all .18s var(--ease-out);
+}
+.toggle-chip:hover{ border-color:rgba(255,255,255,0.3); }
+.toggle-chip .dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#5b6672;
+  transition:background .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.toggle-chip.on .dot{ background:var(--verdigris); box-shadow:0 0 6px var(--verdigris); }
+.toggle-chip.on{ color:#fff; }
+
+/* hint / empty state overlay in chamber */
+#empty-state{
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  z-index:4;
+  padding:20px;
+}
+#empty-state .card{
+  max-width:600px;
+  width:100%;
+  max-height:100%;
+  overflow-y:auto;
+  background:rgba(15,18,25,0.82);
+  border:1px solid rgba(255,255,255,0.1);
+  backdrop-filter:blur(8px);
+  border-radius:var(--radius-card);
+  padding:22px 22px 18px;
+  color:#eef1ea;
+  box-shadow:0 20px 60px -20px rgba(0,0,0,0.6);
+}
+#empty-state h2{
+  font-size:15px; margin:0 0 4px; font-weight:600;
+}
+#empty-state p{
+  font-size:12.5px; color:#aab2ba; margin:0 0 14px; line-height:1.55;
+}
+#empty-state .eyebrow{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; color:var(--verdigris-pale);
+  margin-bottom:6px; display:block;
+}
+
+/* drift hint (small, corner) shown briefly after first atom */
+#drag-hint{
+  position:absolute;
+  bottom:60px; left:50%; transform:translateX(-50%) translateY(6px);
+  font-family:var(--font-mono);
+  font-size:10.5px;
+  color:rgba(255,255,255,0.55);
+  letter-spacing:.04em;
+  z-index:3;
+  opacity:0;
+  transition:opacity .5s ease, transform .5s ease;
+  pointer-events:none;
+  white-space:nowrap;
+}
+#drag-hint.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* connect-two-selected-atoms action — appears top-center of the chamber when exactly 2 atoms are selected */
+#connect-action{
+  position:absolute;
+  top:14px; left:50%;
+  transform:translateX(-50%) translateY(-8px) scale(.96);
+  z-index:8;
+  font-family:var(--font-sans);
+  font-size:12.5px;
+  font-weight:600;
+  color:#fff;
+  background:var(--cobalt);
+  border:1px solid var(--cobalt);
+  padding:9px 18px;
+  border-radius:var(--radius-pill);
+  box-shadow:0 10px 28px -8px rgba(58,90,156,0.55);
+  cursor:pointer;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s var(--ease-out), transform .18s var(--ease-back);
+  white-space:nowrap;
+}
+#connect-action.show{ opacity:1; transform:translateX(-50%) translateY(0) scale(1); pointer-events:auto; }
+#connect-action:hover:not(:disabled){ background:var(--cobalt-deep); border-color:var(--cobalt-deep); }
+#connect-action:disabled{
+  background:rgba(20,24,32,0.72); border-color:rgba(255,255,255,0.14); color:rgba(255,255,255,0.6);
+  cursor:not-allowed; box-shadow:none;
+}
+
+/* bond-angle readout — appears top-center when exactly 3 atoms are selected (not a button, just info) */
+#angle-badge{
+  position:absolute;
+  top:14px; left:50%;
+  transform:translateX(-50%) translateY(-8px) scale(.96);
+  z-index:8;
+  font-family:var(--font-sans);
+  font-size:12px;
+  color:#eef1ea;
+  background:rgba(20,24,32,0.85);
+  border:1px solid var(--verdigris);
+  padding:9px 16px;
+  border-radius:14px;
+  box-shadow:0 10px 28px -8px rgba(10,13,19,0.5);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s var(--ease-out), transform .18s var(--ease-back);
+  max-width:min(90vw, 440px);
+  text-align:center;
+}
+#angle-badge.show{ opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
+.ab-row + .ab-row{ margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.12); }
+.ab-main{ font-family:var(--font-mono); font-weight:700; color:var(--verdigris-pale); font-size:13px; }
+.ab-sub{ display:block; font-size:10.5px; color:rgba(255,255,255,0.62); margin-top:2px; line-height:1.4; }
+
+/* ============================================================
+   ELEMENT ATTACH POPUP — small, anchored next to the click
+   ============================================================ */
+#picker-backdrop{
+  position:fixed; inset:0;
+  background:transparent;
+  z-index:50;
+  opacity:0; pointer-events:none;
+  transition:opacity .12s var(--ease-out);
+}
+#picker-backdrop.show{ opacity:1; pointer-events:auto; }
+#picker-modal{
+  position:fixed;
+  background:var(--paper-raised);
+  border-radius:var(--radius-card);
+  box-shadow:0 20px 46px -14px rgba(10,13,19,0.4);
+  padding:12px 12px 13px;
+  width:min(560px, calc(100vw - 24px));
+  max-height:min(420px, calc(100vh - 24px));
+  overflow-y:auto;
+  transform:scale(.94);
+  opacity:0;
+  transition:transform .16s var(--ease-back), opacity .12s var(--ease-out);
+  border:1px solid var(--paper-line);
+}
+#picker-backdrop.show #picker-modal{ transform:scale(1); opacity:1; }
+#picker-head{ margin-bottom:8px; }
+#picker-head .p-eyebrow{
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.13em; color:var(--cobalt); font-weight:600; display:block;
+}
+#picker-context{ font-size:11px; color:var(--ink-faint); display:block; margin-top:2px; line-height:1.4; }
+
+#element-grid-empty{ margin-top:14px; }
+
+/* periodic-table grid — shared by the start-atom picker and the attach popup */
+.ptable-grid{
+  display:grid;
+  grid-template-columns:repeat(18, minmax(0,1fr));
+  gap:3px;
+}
+.pt-cell{
+  aspect-ratio:1;
+  border:1px solid var(--paper-line);
+  border-radius:5px;
+  background:var(--paper);
+  cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:1px;
+  transition:all .12s var(--ease-out);
+  position:relative;
+  min-width:0;
+}
+.pt-cell:hover:not(:disabled){
+  border-color:var(--swatch,var(--cobalt));
+  background:var(--paper-raised);
+  transform:translateY(-2px) scale(1.1);
+  box-shadow:var(--shadow-card);
+  z-index:2;
+}
+.pt-cell .pt-z{
+  position:absolute; top:1px; left:2px;
+  font-family:var(--font-mono); font-size:6px; color:var(--ink-faint); line-height:1;
+}
+.pt-cell .pt-sym{ font-family:var(--font-mono); font-weight:700; font-size:10.5px; line-height:1; }
+.pt-cell:disabled, .pt-cell.disabled{ opacity:.3; cursor:not-allowed; }
+.pt-cell:disabled:hover, .pt-cell.disabled:hover{ transform:none; border-color:var(--paper-line); background:var(--paper); box-shadow:none; }
+.pt-dblock{
+  grid-column:3/13; grid-row:4/7;
+  border:1px dashed var(--paper-line);
+  border-radius:6px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px;
+  font-family:var(--font-sans); font-size:9.5px; font-weight:600; color:var(--ink-faint); text-align:center;
+  background:repeating-linear-gradient(135deg, transparent, transparent 5px, var(--paper-line) 5px, var(--paper-line) 6px);
+  cursor:default;
+}
+.pt-dblock span{ font-size:7.5px; font-weight:400; opacity:.85; margin-top:1px; }
+
+#order-select{
+  display:flex; gap:5px; margin-bottom:9px;
+}
+.order-btn{
+  flex:1 1 0;
+  border:1px solid var(--paper-line);
+  background:var(--paper);
+  color:var(--ink-soft);
+  font-size:11px;
+  font-family:var(--font-sans);
+  padding:6px 4px;
+  border-radius:var(--radius-sm);
+  cursor:pointer;
+  transition:all .13s var(--ease-out);
+}
+.order-btn i{ font-style:normal; font-family:var(--font-mono); opacity:.65; margin-left:2px; }
+.order-btn:hover:not(:disabled){ border-color:var(--cobalt); }
+.order-btn.active{ background:var(--cobalt); border-color:var(--cobalt); color:#fff; }
+.order-btn.active i{ opacity:.85; }
+.order-btn:disabled{ opacity:.32; cursor:not-allowed; }
+
+/* preset popover */
+#preset-pop{
+  position:absolute;
+  bottom:56px; left:14px;
+  background:var(--paper-raised);
+  border:1px solid var(--paper-line);
+  border-radius:var(--radius-card);
+  box-shadow:0 20px 50px -16px rgba(0,0,0,0.4);
+  padding:8px;
+  width:min(300px, calc(100vw - 28px));
+  max-height:min(64vh, 520px);
+  overflow-y:auto;
+  z-index:15;
+  opacity:0; transform:translateY(6px) scale(.97);
+  pointer-events:none;
+  transition:all .16s var(--ease-out);
+}
+#preset-pop.show{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+.preset-cat-label{
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; font-weight:600;
+  color:var(--ink-faint); padding:9px 8px 4px;
+}
+.preset-cat-label:first-child{ padding-top:4px; }
+.preset-item{
+  display:flex; align-items:baseline; gap:8px;
+  padding:7px 10px; border-radius:var(--radius-sm);
+  cursor:pointer; font-size:12.5px; color:var(--ink);
+  transition:background .12s;
+}
+.preset-item:hover{ background:var(--paper); }
+.preset-item .pf{ font-family:var(--font-mono); font-weight:600; color:var(--cobalt); min-width:58px; }
+
+/* help popover */
+#help-pop{
+  position:absolute; top:52px; right:14px;
+  background:var(--paper-raised);
+  border:1px solid var(--paper-line);
+  border-radius:var(--radius-card);
+  box-shadow:0 20px 50px -16px rgba(0,0,0,0.4);
+  padding:16px;
+  width:min(320px, calc(100vw - 40px));
+  z-index:15;
+  opacity:0; transform:translateY(6px) scale(.97);
+  pointer-events:none;
+  transition:all .16s var(--ease-out);
+  font-size:12.5px; line-height:1.7; color:var(--ink-soft);
+}
+#help-pop.show{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+#help-pop h4{ margin:0 0 8px; font-size:13px; color:var(--ink); }
+.hk{ font-family:var(--font-mono); background:var(--paper); border:1px solid var(--paper-line); border-radius:4px; padding:1px 5px; font-size:11px; color:var(--cobalt-deep); }
+
+/* ============================================================
+   SIDEBAR — "실험 노트" notebook console
+   ============================================================ */
+#sidebar{
+  flex:0 0 auto;
+  width:392px;
+  max-width:42vw;
+  display:flex;
+  flex-direction:column;
+  background:var(--paper);
+  border-left:1px solid var(--paper-line);
+  min-height:0;
+}
+@media(max-width:880px){
+  #sidebar{ width:100%; max-width:100%; height:46vh; border-left:none; border-top:1px solid var(--paper-line); }
+}
+
+#tabs{
+  display:flex;
+  gap:2px;
+  padding:10px 10px 0;
+  flex:0 0 auto;
+}
+.tab-btn{
+  flex:1 1 0;
+  border:1px solid var(--paper-line);
+  border-bottom:none;
+  background:var(--paper);
+  color:var(--ink-faint);
+  font-size:11.5px;
+  font-weight:500;
+  padding:9px 4px 8px;
+  border-radius:8px 8px 0 0;
+  cursor:pointer;
+  position:relative;
+  top:1px;
+  transition:all .15s var(--ease-out);
+  font-family:var(--font-sans);
+  line-height:1.25;
+}
+.tab-btn .tb-en{ display:block; font-family:var(--font-mono); font-size:8.5px; letter-spacing:.08em; opacity:.7; margin-bottom:2px; }
+.tab-btn.active{
+  background:var(--paper-raised);
+  color:var(--ink);
+  border-color:var(--paper-line);
+  box-shadow:0 -2px 6px rgba(0,0,0,0.03);
+}
+.tab-btn:hover:not(.active){ color:var(--ink-soft); }
+
+#tab-panels{
+  flex:1 1 auto;
+  min-height:0;
+  background:var(--paper-raised);
+  border:1px solid var(--paper-line);
+  border-top:none;
+  overflow:hidden;
+  position:relative;
+}
+.tab-panel{
+  position:absolute; inset:0;
+  overflow-y:auto;
+  padding:18px 18px 24px;
+  opacity:0;
+  transform:translateY(4px);
+  pointer-events:none;
+  transition:opacity .18s var(--ease-out), transform .18s var(--ease-out);
+}
+.tab-panel.active{
+  opacity:1; transform:translateY(0); pointer-events:auto;
+}
+
+.panel-eyebrow{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; color:var(--ink-faint);
+  margin-bottom:4px;
+}
+.panel-title{ font-size:14.5px; font-weight:600; margin:0 0 12px; }
+.panel-empty{
+  font-size:12.5px; color:var(--ink-faint); line-height:1.7;
+  border:1px dashed var(--paper-line); border-radius:var(--radius-card);
+  padding:16px; margin-bottom:14px;
+}
+
+/* property card */
+.prop-card{
+  border:1px solid var(--paper-line);
+  border-radius:var(--radius-card);
+  padding:16px;
+  margin-bottom:14px;
+  background:var(--paper);
+}
+.prop-head{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.prop-sw{ width:44px;height:44px;border-radius:50%; border:1px solid rgba(0,0,0,0.15); flex:0 0 auto; }
+.prop-name{ font-size:15px; font-weight:600; }
+.prop-role{ font-family:var(--font-mono); font-size:10px; color:var(--cobalt); letter-spacing:.06em; }
+.prop-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:9px 12px;
+  font-size:12px;
+}
+.prop-grid .pg-item{ }
+.prop-grid .pg-k{ color:var(--ink-faint); font-size:10.5px; margin-bottom:2px; }
+.prop-grid .pg-v{ font-family:var(--font-mono); font-weight:600; color:var(--ink); }
+.prop-neighbors{ margin-top:12px; padding-top:12px; border-top:1px solid var(--paper-line); font-size:12px; }
+.prop-neighbors .pn-row{ display:flex; justify-content:space-between; padding:3px 0; color:var(--ink-soft); }
+.prop-neighbors .pn-row b{ color:var(--ink); font-family:var(--font-mono); }
+
+/* reference mini table */
+#ref-table{ display:grid; grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); gap:6px; }
+.ref-chip{
+  border:1px solid var(--paper-line); border-radius:var(--radius-sm); padding:7px 4px 6px; text-align:center;
+}
+.ref-chip .sw{ width:18px;height:18px;border-radius:50%; margin:0 auto 4px; border:1px solid rgba(0,0,0,0.12); }
+.ref-chip .sym{ font-family:var(--font-mono); font-weight:700; font-size:11.5px; }
+.ref-chip .en{ font-family:var(--font-mono); font-size:9px; color:var(--ink-faint); }
+
+/* svg structure panels */
+.struct-svg-wrap{
+  border:1px solid var(--paper-line);
+  border-radius:var(--radius-card);
+  background:#fff;
+  padding:14px;
+  margin-bottom:14px;
+}
+.struct-svg-wrap svg{ width:100%; height:auto; min-height:150px; display:block; overflow:visible; }
+.struct-caption{ font-size:11px; color:var(--ink-faint); text-align:center; margin-top:2px; }
+.text-formula{
+  font-family:var(--font-mono); font-size:13px; background:var(--paper); border:1px solid var(--paper-line);
+  border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:14px; word-break:break-all; color:var(--cobalt-deep);
+}
+
+/* legend rows */
+.legend-row{ display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-soft); margin-bottom:6px; }
+.legend-swatch{ width:14px;height:3px; border-radius:2px; flex:0 0 auto; }
+.legend-dot{ width:8px;height:8px;border-radius:50%; flex:0 0 auto; }
+
+/* dipole tab */
+.bond-row{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:9px 10px; border:1px solid var(--paper-line); border-radius:var(--radius-sm); margin-bottom:6px;
+  font-size:12px; background:var(--paper);
+}
+.bond-row .br-pair{ font-family:var(--font-mono); font-weight:600; }
+.bond-row .br-tag{
+  font-size:9.5px; padding:2px 7px; border-radius:var(--radius-pill); font-family:var(--font-sans); font-weight:600; letter-spacing:.02em;
+}
+.tag-polar{ background:var(--rose-pale); color:var(--rose); }
+.tag-nonpolar{ background:var(--verdigris-pale); color:var(--verdigris); }
+.tag-ionic{ background:var(--amber-pale); color:var(--amber); }
+.ring-tag{
+  font-style:normal; font-family:var(--font-sans); font-size:9px; font-weight:600;
+  background:var(--cobalt-pale); color:var(--cobalt-deep); padding:1px 5px; border-radius:var(--radius-pill);
+  margin-left:3px; vertical-align:middle;
+}
+
+.conclusion-card{
+  border-radius:var(--radius-card);
+  padding:16px;
+  margin-top:14px;
+  border:1px solid transparent;
+}
+.conclusion-card.polar{ background:var(--rose-pale); border-color:#d9a3b1; }
+.conclusion-card.nonpolar{ background:var(--verdigris-pale); border-color:#a9d1c6; }
+.conclusion-card .cc-tag{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; font-weight:700; margin-bottom:6px; display:block;
+}
+.conclusion-card.polar .cc-tag{ color:var(--rose); }
+.conclusion-card.nonpolar .cc-tag{ color:var(--verdigris); }
+.conclusion-card p{ margin:0; font-size:12.5px; line-height:1.6; color:var(--ink); }
+
+::-webkit-scrollbar{ width:9px; height:9px; }
+::-webkit-scrollbar-thumb{ background:var(--paper-line); border-radius:5px; }
+::-webkit-scrollbar-track{ background:transparent; }
+
+@media (prefers-reduced-motion: reduce){
+  *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">
+      <span class="eyebrow">LAB · 02</span>
+      <h1>분자 배치 실험실</h1>
+      <span class="sub">전기음성도 · 쌍극자 모멘트 · VSEPR 구조</span>
+    </div>
+    <button class="help-btn" id="help-btn" title="도움말">?</button>
+  </header>
+
+  <main>
+    <div id="viewport-wrap">
+      <canvas id="three-canvas"></canvas>
+
+      <div id="formula-badge">
+        <span class="f-label">SPECIMEN</span>
+        <span class="f-formula" id="formula-text">—</span>
+        <span class="f-status" id="formula-status"></span>
+      </div>
+
+      <div id="drag-hint">드래그: 회전 · 스크롤: 확대/축소 · 빈 자리 클릭: 원자 추가</div>
+      <button id="connect-action"></button>
+      <div id="angle-badge"></div>
+
+      <div id="empty-state">
+        <div class="card">
+          <span class="eyebrow">STEP 1 — 중심 원자 선택</span>
+          <h2>어떤 원자로 시작할까요?</h2>
+          <p>중심 원자를 고르면, 그 원자가 가진 전자쌍 수에 따라 결합 자리(빈 구슬)가 자동으로 배치됩니다. 이후 그 자리를 클릭해 새 원자를 붙여나가며 분자를 완성해 보세요.</p>
+          <div id="element-grid-empty"></div>
+        </div>
+      </div>
+
+      <div id="preset-pop"></div>
+      <div id="help-pop">
+        <h4>사용 방법</h4>
+        · 빈 결합 자리(점멸하는 구슬)를 <b>클릭</b>하면 원소를 골라 새 원자를 붙일 수 있어요. 결합 종류(단일·이중·삼중)는 남은 자리가 있을 때만 고를 수 있어요.<br>
+        · 원자를 <b>클릭</b>하면 성질이 표시되고, <span class="hk">Shift</span>+클릭으로 여러 원자를 함께 선택할 수 있어요.<br>
+        · 원자 <b>2개를 선택</b>하면 화면 위쪽에 연결 버튼이 떠요 — 몇 중 결합이 될지는 남은 결합 자리를 보고 자동으로 정해져요.<br>
+        · 원자 <b>3개를 선택</b>하면(가운데 원자가 나머지 둘과 모두 결합돼 있어야 해요) 결합각이 화면 위쪽에 표시돼요.<br>
+        · 선택한 원자에서 <span class="hk">Backspace</span>를 누르면 그 원자(들)와 딸린 구조가 함께 삭제돼요.<br>
+        · 화면을 <span class="hk">드래그</span>하면 회전, <span class="hk">스크롤</span>하면 확대·축소돼요.<br>
+        · <b>저장</b>으로 만든 분자를 .molecule 파일로 내려받고, <b>불러오기</b>로 다시 열 수 있어요.<br>
+        · 원소 선택창은 실제 주기율표 모양이에요. 전이 금속은 이 모형의 단순 결합 규칙으로 표현하기 어려워 자리만 표시돼요.<br>
+        · 결합 각도는 전자쌍 반발(VSEPR) 이론에 따라 자동으로 계산돼요.<br>
+        · 원자를 붙이거나 연결할 때마다 분자 전체가 겹치지 않게 잠시 후 스스로 자리를 잡아요 — 고리를 닫으면 특히 유용해요.
+      </div>
+
+      <div id="control-dock">
+        <div class="dock-group">
+          <button class="dock-btn" id="btn-preset">예시 분자 <span class="k">▾</span></button>
+          <button class="dock-btn" id="btn-save">저장</button>
+          <button class="dock-btn" id="btn-load">불러오기</button>
+          <input type="file" id="file-load-input" accept=".molecule,application/json" style="display:none;">
+          <button class="dock-btn" id="btn-undo" disabled>실행 취소</button>
+          <button class="dock-btn" id="btn-reset">초기화</button>
+        </div>
+        <div class="dock-group">
+          <div class="toggle-chip" id="toggle-lone"><span class="dot"></span>비공유 전자쌍</div>
+          <div class="toggle-chip on" id="toggle-dipole"><span class="dot"></span>쌍극자 벡터</div>
+          <div class="toggle-chip on" id="toggle-spin"><span class="dot"></span>자동 회전</div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="sidebar">
+      <div id="tabs">
+        <button class="tab-btn active" data-tab="properties"><span class="tb-en">ATOM</span>원자 속성</button>
+        <button class="tab-btn" data-tab="lewis"><span class="tb-en">LEWIS</span>전자점식</button>
+        <button class="tab-btn" data-tab="structural"><span class="tb-en">FORMULA</span>구조식</button>
+        <button class="tab-btn" data-tab="dipole"><span class="tb-en">POLARITY</span>쌍극자·극성</button>
+      </div>
+      <div id="tab-panels">
+        <div class="tab-panel active" id="panel-properties"></div>
+        <div class="tab-panel" id="panel-lewis"></div>
+        <div class="tab-panel" id="panel-structural"></div>
+        <div class="tab-panel" id="panel-dipole"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   분자 배치 실험실 — core application script
+   ============================================================ */
+
+/* ---------- 1. ELEMENT DATA — main-group periods 1–6 (Korean-textbook rounded EN scale) ---------- */
+/* period/group = position in the periodic table, used to lay out the picker as a real periodic table. */
+const ELEMENTS = {
+  // 1주기
+  H:  { symbol:'H',  name:'수소',     number:1,  period:1, group:1,  en:2.1,  bonds:1, lone:0, valence:1, radius:0.30, color:0xf8fafc },
+  He: { symbol:'He', name:'헬륨',     number:2,  period:1, group:18, en:null, bonds:0, lone:1, valence:2, radius:0.28, color:0xd9ffff, inert:true },
+  // 2주기
+  Li: { symbol:'Li', name:'리튬',     number:3,  period:2, group:1,  en:1.0,  bonds:1, lone:0, valence:1, radius:0.66, color:0xcc80ff },
+  Be: { symbol:'Be', name:'베릴륨',   number:4,  period:2, group:2,  en:1.5,  bonds:2, lone:0, valence:2, radius:0.55, color:0xa3e635 },
+  B:  { symbol:'B',  name:'붕소',     number:5,  period:2, group:13, en:2.0,  bonds:3, lone:0, valence:3, radius:0.50, color:0xfca5a5 },
+  C:  { symbol:'C',  name:'탄소',     number:6,  period:2, group:14, en:2.5,  bonds:4, lone:0, valence:4, radius:0.48, color:0x53606b },
+  N:  { symbol:'N',  name:'질소',     number:7,  period:2, group:15, en:3.0,  bonds:3, lone:1, valence:5, radius:0.46, color:0x3b82f6 },
+  O:  { symbol:'O',  name:'산소',     number:8,  period:2, group:16, en:3.5,  bonds:2, lone:2, valence:6, radius:0.45, color:0xef4444 },
+  F:  { symbol:'F',  name:'플루오린', number:9,  period:2, group:17, en:4.0,  bonds:1, lone:3, valence:7, radius:0.42, color:0x86efac },
+  Ne: { symbol:'Ne', name:'네온',     number:10, period:2, group:18, en:null, bonds:0, lone:4, valence:8, radius:0.40, color:0xb3e3f5, inert:true },
+  // 3주기
+  Na: { symbol:'Na', name:'나트륨',   number:11, period:3, group:1,  en:0.9,  bonds:1, lone:0, valence:1, radius:0.80, color:0xab5cf2 },
+  Mg: { symbol:'Mg', name:'마그네슘', number:12, period:3, group:2,  en:1.2,  bonds:2, lone:0, valence:2, radius:0.70, color:0x8aff00 },
+  Al: { symbol:'Al', name:'알루미늄', number:13, period:3, group:13, en:1.5,  bonds:3, lone:0, valence:3, radius:0.65, color:0xbfa6a6 },
+  Si: { symbol:'Si', name:'규소',     number:14, period:3, group:14, en:1.8,  bonds:4, lone:0, valence:4, radius:0.62, color:0xf0c8a0 },
+  P:  { symbol:'P',  name:'인',       number:15, period:3, group:15, en:2.1,  bonds:3, lone:1, valence:5, radius:0.58, color:0xfb923c },
+  S:  { symbol:'S',  name:'황',       number:16, period:3, group:16, en:2.5,  bonds:2, lone:2, valence:6, radius:0.56, color:0xfde047 },
+  Cl: { symbol:'Cl', name:'염소',     number:17, period:3, group:17, en:3.0,  bonds:1, lone:3, valence:7, radius:0.54, color:0x4ade80 },
+  Ar: { symbol:'Ar', name:'아르곤',   number:18, period:3, group:18, en:null, bonds:0, lone:4, valence:8, radius:0.50, color:0x80d1e3, inert:true },
+  // 4주기
+  K:  { symbol:'K',  name:'포타슘',   number:19, period:4, group:1,  en:0.8,  bonds:1, lone:0, valence:1, radius:0.94, color:0x8f40d4 },
+  Ca: { symbol:'Ca', name:'칼슘',     number:20, period:4, group:2,  en:1.0,  bonds:2, lone:0, valence:2, radius:0.82, color:0x3dff00 },
+  Ga: { symbol:'Ga', name:'갈륨',     number:31, period:4, group:13, en:1.6,  bonds:3, lone:0, valence:3, radius:0.62, color:0xc28f8f },
+  Ge: { symbol:'Ge', name:'저마늄',   number:32, period:4, group:14, en:1.8,  bonds:4, lone:0, valence:4, radius:0.60, color:0x668f8f },
+  As: { symbol:'As', name:'비소',     number:33, period:4, group:15, en:2.0,  bonds:3, lone:1, valence:5, radius:0.60, color:0xbd80e3 },
+  Se: { symbol:'Se', name:'셀레늄',   number:34, period:4, group:16, en:2.4,  bonds:2, lone:2, valence:6, radius:0.58, color:0xffa100 },
+  Br: { symbol:'Br', name:'브로민',   number:35, period:4, group:17, en:2.8,  bonds:1, lone:3, valence:7, radius:0.60, color:0xb45309 },
+  Kr: { symbol:'Kr', name:'크립톤',   number:36, period:4, group:18, en:null, bonds:0, lone:4, valence:8, radius:0.52, color:0x5cb8d1, inert:true },
+  // 5주기
+  Rb: { symbol:'Rb', name:'루비듐',   number:37, period:5, group:1,  en:0.8,  bonds:1, lone:0, valence:1, radius:1.00, color:0x702eb0 },
+  Sr: { symbol:'Sr', name:'스트론튬', number:38, period:5, group:2,  en:1.0,  bonds:2, lone:0, valence:2, radius:0.90, color:0x00ff00 },
+  In: { symbol:'In', name:'인듐',     number:49, period:5, group:13, en:1.7,  bonds:3, lone:0, valence:3, radius:0.72, color:0xa67573 },
+  Sn: { symbol:'Sn', name:'주석',     number:50, period:5, group:14, en:1.8,  bonds:4, lone:0, valence:4, radius:0.68, color:0x668080 },
+  Sb: { symbol:'Sb', name:'안티모니', number:51, period:5, group:15, en:1.9,  bonds:3, lone:1, valence:5, radius:0.66, color:0x9e63b5 },
+  Te: { symbol:'Te', name:'텔루륨',   number:52, period:5, group:16, en:2.1,  bonds:2, lone:2, valence:6, radius:0.64, color:0xd47a00 },
+  I:  { symbol:'I',  name:'아이오딘', number:53, period:5, group:17, en:2.5,  bonds:1, lone:3, valence:7, radius:0.62, color:0x940094 },
+  Xe: { symbol:'Xe', name:'제논',     number:54, period:5, group:18, en:null, bonds:0, lone:4, valence:8, radius:0.56, color:0x429eb0, inert:true },
+  // 6주기
+  Cs: { symbol:'Cs', name:'세슘',     number:55, period:6, group:1,  en:0.7,  bonds:1, lone:0, valence:1, radius:1.08, color:0x57178f },
+  Ba: { symbol:'Ba', name:'바륨',     number:56, period:6, group:2,  en:0.9,  bonds:2, lone:0, valence:2, radius:0.98, color:0x00c900 },
+  Tl: { symbol:'Tl', name:'탈륨',     number:81, period:6, group:13, en:1.8,  bonds:3, lone:0, valence:3, radius:0.78, color:0xa6544d },
+  Pb: { symbol:'Pb', name:'납',       number:82, period:6, group:14, en:1.8,  bonds:4, lone:0, valence:4, radius:0.74, color:0x575961 },
+  Bi: { symbol:'Bi', name:'비스무트', number:83, period:6, group:15, en:1.9,  bonds:3, lone:1, valence:5, radius:0.72, color:0x9e4fb5 },
+  Po: { symbol:'Po', name:'폴로늄',   number:84, period:6, group:16, en:2.0,  bonds:2, lone:2, valence:6, radius:0.70, color:0xab5c00 },
+  At: { symbol:'At', name:'아스타틴', number:85, period:6, group:17, en:2.2,  bonds:1, lone:3, valence:7, radius:0.68, color:0x754f45 },
+  Rn: { symbol:'Rn', name:'라돈',     number:86, period:6, group:18, en:null, bonds:0, lone:4, valence:8, radius:0.60, color:0x428296, inert:true },
+};
+const ELEMENT_ORDER = Object.keys(ELEMENTS).sort((a,b)=> ELEMENTS[a].number - ELEMENTS[b].number);
+
+/* ---------- Preset molecule library — helpers ---------- */
+function centerWithTerminals(centerEl, terminalEls){
+  const steps = [{el:centerEl, parent:null}];
+  terminalEls.forEach(el=> steps.push({el, parent:0}));
+  return steps;
+}
+function chainOf(backboneEl, count){
+  const steps = [];
+  for(let i=0;i<count;i++) steps.push({el:backboneEl, parent: i===0?null:i-1});
+  for(let i=0;i<count;i++){
+    const hCount = count===1 ? 4 : ((i===0||i===count-1) ? 3 : 2);
+    for(let h=0;h<hCount;h++) steps.push({el:'H', parent:i});
+  }
+  return steps;
+}
+function branchedC(centerHasDirectH, branchCount){
+  // central carbon with `branchCount` methyl (CH3) branches, plus a direct H if centerHasDirectH
+  const steps = [{el:'C', parent:null}];
+  for(let i=0;i<branchCount;i++) steps.push({el:'C', parent:0});
+  if(centerHasDirectH) steps.push({el:'H', parent:0});
+  for(let i=1;i<=branchCount;i++){ steps.push({el:'H',parent:i}); steps.push({el:'H',parent:i}); steps.push({el:'H',parent:i}); }
+  return steps;
+}
+
+const PRESET_CATEGORIES = [
+  { key:'diatomic', label:'이원자 분자', items:[
+    { key:'H2',  name:'수소',       steps: centerWithTerminals('H',['H']) },
+    { key:'HF',  name:'플루오린화수소', steps: centerWithTerminals('H',['F']) },
+    { key:'HCl', name:'염화수소',    steps: centerWithTerminals('H',['Cl']) },
+    { key:'HBr', name:'브로민화수소', steps: centerWithTerminals('H',['Br']) },
+    { key:'LiF', name:'플루오린화리튬', steps: centerWithTerminals('Li',['F']) },
+    { key:'LiCl',name:'염화리튬',    steps: centerWithTerminals('Li',['Cl']) },
+    { key:'NaF', name:'플루오린화나트륨', steps: centerWithTerminals('Na',['F']) },
+    { key:'NaCl',name:'염화나트륨',   steps: centerWithTerminals('Na',['Cl']) },
+    { key:'F2',  name:'플루오린',    steps: centerWithTerminals('F',['F']) },
+    { key:'Cl2', name:'염소',       steps: centerWithTerminals('Cl',['Cl']) },
+  ]},
+  { key:'multiple', label:'다중 결합 분자', items:[
+    { key:'N2',  name:'질소 (삼중결합)', steps:[ {el:'N',parent:null}, {el:'N',parent:0,order:3} ] },
+    { key:'O2',  name:'산소 (이중결합)', steps:[ {el:'O',parent:null}, {el:'O',parent:0,order:2} ] },
+    { key:'CO2', name:'이산화탄소',    steps:[ {el:'C',parent:null}, {el:'O',parent:0,order:2}, {el:'O',parent:0,order:2} ] },
+    { key:'HCN', name:'사이안화수소',   steps:[ {el:'C',parent:null}, {el:'H',parent:0}, {el:'N',parent:0,order:3} ] },
+    { key:'C2H4',name:'에틸렌',       steps:[ {el:'C',parent:null}, {el:'C',parent:0,order:2}, {el:'H',parent:0}, {el:'H',parent:0}, {el:'H',parent:1}, {el:'H',parent:1} ] },
+    { key:'C2H2',name:'아세틸렌',      steps:[ {el:'C',parent:null}, {el:'C',parent:0,order:3}, {el:'H',parent:0}, {el:'H',parent:1} ] },
+    { key:'HCHO',name:'폼알데하이드',   steps:[ {el:'C',parent:null}, {el:'O',parent:0,order:2}, {el:'H',parent:0}, {el:'H',parent:0} ] },
+  ]},
+  { key:'triatomic', label:'굽은형 · 직선형 삼원자 분자', items:[
+    { key:'H2O', name:'물',         steps: centerWithTerminals('O',['H','H']) },
+    { key:'H2S', name:'황화수소',    steps: centerWithTerminals('S',['H','H']) },
+    { key:'OF2', name:'이플루오린화산소', steps: centerWithTerminals('O',['F','F']) },
+    { key:'SCl2',name:'이염화황',    steps: centerWithTerminals('S',['Cl','Cl']) },
+    { key:'HOCl',name:'차아염소산',   steps: centerWithTerminals('O',['H','Cl']) },
+    { key:'HOF', name:'차아플루오린산', steps: centerWithTerminals('O',['H','F']) },
+    { key:'H2O2',name:'과산화수소',   steps:[ {el:'O',parent:null}, {el:'O',parent:0}, {el:'H',parent:0}, {el:'H',parent:1} ] },
+    { key:'BeH2',name:'수소화베릴륨', steps: centerWithTerminals('Be',['H','H']) },
+    { key:'BeF2',name:'플루오린화베릴륨', steps: centerWithTerminals('Be',['F','F']) },
+    { key:'BeCl2',name:'염화베릴륨', steps: centerWithTerminals('Be',['Cl','Cl']) },
+    { key:'MgH2',name:'수소화마그네슘', steps: centerWithTerminals('Mg',['H','H']) },
+    { key:'MgF2',name:'플루오린화마그네슘', steps: centerWithTerminals('Mg',['F','F']) },
+  ]},
+  { key:'tetra', label:'삼각뿔형 · 평면삼각형 사원자 분자', items:[
+    { key:'NH3', name:'암모니아',    steps: centerWithTerminals('N',['H','H','H']) },
+    { key:'PH3', name:'포스핀',      steps: centerWithTerminals('P',['H','H','H']) },
+    { key:'NF3', name:'삼플루오린화질소', steps: centerWithTerminals('N',['F','F','F']) },
+    { key:'PF3', name:'삼플루오린화인', steps: centerWithTerminals('P',['F','F','F']) },
+    { key:'NCl3',name:'삼염화질소',   steps: centerWithTerminals('N',['Cl','Cl','Cl']) },
+    { key:'BH3', name:'보레인',      steps: centerWithTerminals('B',['H','H','H']) },
+    { key:'BF3', name:'삼플루오린화붕소', steps: centerWithTerminals('B',['F','F','F']) },
+    { key:'BCl3',name:'삼염화붕소',   steps: centerWithTerminals('B',['Cl','Cl','Cl']) },
+    { key:'AlH3',name:'수소화알루미늄', steps: centerWithTerminals('Al',['H','H','H']) },
+    { key:'AlCl3',name:'염화알루미늄', steps: centerWithTerminals('Al',['Cl','Cl','Cl']) },
+  ]},
+  { key:'tetrahedral', label:'정사면체형 오원자 분자', items:[
+    { key:'CH4', name:'메테인',      steps: centerWithTerminals('C',['H','H','H','H']) },
+    { key:'SiH4',name:'실레인',      steps: centerWithTerminals('Si',['H','H','H','H']) },
+    { key:'CF4', name:'사플루오린화탄소', steps: centerWithTerminals('C',['F','F','F','F']) },
+    { key:'SiF4',name:'사플루오린화규소', steps: centerWithTerminals('Si',['F','F','F','F']) },
+    { key:'CCl4',name:'사염화탄소',   steps: centerWithTerminals('C',['Cl','Cl','Cl','Cl']) },
+    { key:'SiCl4',name:'사염화규소',  steps: centerWithTerminals('Si',['Cl','Cl','Cl','Cl']) },
+    { key:'CH3F',name:'플루오로메테인', steps: centerWithTerminals('C',['H','H','H','F']) },
+    { key:'CH3Cl',name:'클로로메테인', steps: centerWithTerminals('C',['H','H','H','Cl']) },
+    { key:'CH2Cl2',name:'다이클로로메테인', steps: centerWithTerminals('C',['H','H','Cl','Cl']) },
+    { key:'CHCl3',name:'클로로폼',    steps: centerWithTerminals('C',['H','Cl','Cl','Cl']) },
+  ]},
+  { key:'chain', label:'탄화수소 사슬 · 가지형 구조', items:[
+    { key:'C2H6', name:'에테인',     steps: chainOf('C',2) },
+    { key:'C3H8', name:'프로페인',    steps: chainOf('C',3) },
+    { key:'C4H10',name:'뷰테인',     steps: chainOf('C',4) },
+    { key:'C5H12',name:'펜테인',     steps: chainOf('C',5) },
+    { key:'iC4H10',name:'아이소뷰테인', steps: branchedC(true, 3) },
+    { key:'neoC5H12',name:'네오펜테인', steps: branchedC(false, 4) },
+    { key:'Si2H6',name:'다이실레인',  steps: chainOf('Si',2) },
+  ]},
+  { key:'organic', label:'작용기가 있는 유기 화합물', items:[
+    { key:'CH3OH', name:'메탄올',    steps:[ {el:'C',parent:null},{el:'O',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:1} ] },
+    { key:'C2H5OH',name:'에탄올',    steps:[ {el:'C',parent:null},{el:'C',parent:0},{el:'O',parent:1},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:2} ] },
+    { key:'CH3OCH3',name:'다이메틸에터', steps:[ {el:'C',parent:null},{el:'O',parent:0},{el:'C',parent:1},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:2},{el:'H',parent:2},{el:'H',parent:2} ] },
+    { key:'CH3NH2',name:'메틸아민',   steps:[ {el:'C',parent:null},{el:'N',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:1},{el:'H',parent:1} ] },
+    { key:'C2H7N', name:'다이메틸아민', steps:[ {el:'N',parent:null},{el:'C',parent:0},{el:'C',parent:0},{el:'H',parent:0},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:2},{el:'H',parent:2},{el:'H',parent:2} ] },
+    { key:'C3H9N', name:'트라이메틸아민', steps:[ {el:'N',parent:null},{el:'C',parent:0},{el:'C',parent:0},{el:'C',parent:0},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:2},{el:'H',parent:2},{el:'H',parent:2},{el:'H',parent:3},{el:'H',parent:3},{el:'H',parent:3} ] },
+    { key:'CH3SH', name:'메테인싸이올', steps:[ {el:'C',parent:null},{el:'S',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'H',parent:1} ] },
+    { key:'glycol', name:'에틸렌글리콜', steps:[ {el:'C',parent:null},{el:'C',parent:0},{el:'O',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'O',parent:1},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:2},{el:'H',parent:5} ] },
+    { key:'endiamine', name:'에틸렌다이아민', steps:[ {el:'C',parent:null},{el:'C',parent:0},{el:'N',parent:0},{el:'H',parent:0},{el:'H',parent:0},{el:'N',parent:1},{el:'H',parent:1},{el:'H',parent:1},{el:'H',parent:2},{el:'H',parent:2},{el:'H',parent:5},{el:'H',parent:5} ] },
+  ]},
+];
+
+function findPresetByKey(key){
+  for(const cat of PRESET_CATEGORIES){
+    const item = cat.items.find(it=> it.key===key);
+    if(item) return item;
+  }
+  return null;
+}
+
+/* ---------- 2. SMALL UTILITIES ---------- */
+const SUBSCRIPT_MAP = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉'};
+function toSubscript(n){ return String(n).split('').map(c=>SUBSCRIPT_MAP[c]||c).join(''); }
+
+function easeOutCubic(t){ return 1-Math.pow(1-t,3); }
+function easeOutBack(t){ const c1=1.70158,c3=c1+1; return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+function animateValue(duration, onUpdate, onComplete, easing){
+  easing = easing || easeOutCubic;
+  const start = performance.now();
+  function frame(now){
+    let t = Math.min(1, (now-start)/duration);
+    onUpdate(easing(t), t);
+    if(t<1){ requestAnimationFrame(frame); }
+    else if(onComplete){ onComplete(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function hexToCss(hex){ return '#'+hex.toString(16).padStart(6,'0'); }
+function enLabel(sym, withPrefix){
+  const el = ELEMENTS[sym];
+  if(el.en===null) return '비활성';
+  return (withPrefix? 'EN ':'') + el.en.toFixed(1);
+}
+
+/* ---------- 3. MOLECULE DATA MODEL ---------- */
+let atomIdCounter = 0;
+let ringBondIdCounter = 0;
+let molecule = { root:null, atomsById:{}, ringBonds:{} };
+let actionHistory = [];
+let selectedAtomIds = new Set();
+
+function createAtomNode(elementSymbol, parentId, dirFromParent){
+  const id = 'a'+(atomIdCounter++);
+  return {
+    id, element:elementSymbol, parent:parentId,
+    slots:[], bondSlotDirs:[], lonePairDirs:[],
+    dirFromParent: dirFromParent ? dirFromParent.clone() : null,
+    pos3D: new THREE.Vector3(),
+    bondOrder:1, parentSlotIndex:null, consumedSlotIndices:[],
+    meshAtom:null, meshLabel:null, bondMesh:null,
+    lonePairMeshes:[], slotMeshes:[]
+  };
+}
+
+function canonicalDirections(n){
+  if(n===1) return [ new THREE.Vector3(0,1,0) ];
+  if(n===2) return [ new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0) ];
+  if(n===3){
+    const angs=[90,210,330].map(a=>a*Math.PI/180);
+    return angs.map(a=> new THREE.Vector3(Math.cos(a), Math.sin(a), 0));
+  }
+  // n===4, standard tetrahedral (methane-like) directions
+  return [
+    new THREE.Vector3(1,1,1).normalize(),
+    new THREE.Vector3(1,-1,-1).normalize(),
+    new THREE.Vector3(-1,1,-1).normalize(),
+    new THREE.Vector3(-1,-1,1).normalize(),
+  ];
+}
+
+function perpAxis(f){
+  const worldUp = new THREE.Vector3(0,1,0);
+  let n = new THREE.Vector3().crossVectors(f, worldUp);
+  if(n.lengthSq() < 1e-6){ n = new THREE.Vector3().crossVectors(f, new THREE.Vector3(1,0,0)); }
+  return n.normalize();
+}
+
+// Keep the two dots within a lone pair visibly separated in the default camera view.
+function lonePairDotAxis(dir){
+  let axis = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,0,1));
+  if(axis.lengthSq()<1e-6) axis = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0));
+  return axis.normalize();
+}
+
+// returns (n-1) other unit-vector directions given one fixed direction f, at proper VSEPR angles
+function otherDirections(f, n){
+  f = f.clone().normalize();
+  const axis = perpAxis(f);
+  if(n===1) return [];
+  if(n===2) return [ f.clone().negate() ];
+  if(n===3){
+    const d1 = f.clone().applyAxisAngle(axis, 2*Math.PI/3);
+    const d2 = f.clone().applyAxisAngle(axis, -2*Math.PI/3);
+    return [d1,d2];
+  }
+  // n===4 tetrahedral: cone at 109.47 deg around f
+  const theta = 109.4712 * Math.PI/180;
+  const dBase = f.clone().applyAxisAngle(axis, theta);
+  const d0 = dBase.clone().applyAxisAngle(f, 0);
+  const d1 = dBase.clone().applyAxisAngle(f, 2*Math.PI/3);
+  const d2 = dBase.clone().applyAxisAngle(f, 4*Math.PI/3);
+  return [d0,d1,d2];
+}
+
+/* ---------- VSEPR REFINEMENT — lone pairs repel more strongly than bonding pairs, so a real
+   AX3E1 (NH3-type) bond angle measures ~107°, and AX2E2 (H2O-type) measures ~104.5°, not the
+   naive 109.5° a uniform tetrahedron would give. These builders construct the ACTUAL compressed
+   geometry (not just a uniform tetrahedron with an after-the-fact label), so the tool's measured
+   angle matches the real value directly. Only the bonding-pair↔bonding-pair angle is chemistry-
+   accurate here; lone-pair positions are placed symmetrically but aren't independently verified
+   against experimental lone-pair angles, since lone pairs can't be selected/measured in this tool
+   anyway (they're not atoms). ---------- */
+const COMPRESSED_ANGLE = { 1: 107, 2: 104.5 }; // el.lone -> target bonding-pair angle (degrees), total===4 only
+
+// given ONE fixed bonding direction f (e.g. the bond back to a parent), returns the other 2
+// bonding directions + the 1 lone-pair direction for an AX3E1 (pyramidal) vertex.
+function buildTripodFromFixed(f, bpAngleDeg){
+  f = f.clone().normalize();
+  const bpRad = bpAngleDeg*Math.PI/180;
+  const cosBP = Math.cos(bpRad);
+  // azimuthal separation (around f) between the two OTHER bonding directions, derived so all
+  // three bonding directions (f + these two) end up mutually at bpAngleDeg from each other
+  const dPhi = Math.acos(Math.max(-1, Math.min(1, cosBP/(1+cosBP))));
+  const axis = perpAxis(f);
+  const g = f.clone().applyAxisAngle(axis, bpRad);
+  const h = g.clone().applyAxisAngle(f, dPhi);
+  const lone = new THREE.Vector3().add(f).add(g).add(h).normalize().negate();
+  return { bonds:[g,h], lone:[lone] };
+}
+
+// given ONE fixed bonding direction f, returns the other 1 bonding direction + 2 lone-pair
+// directions for an AX2E2 (bent) vertex.
+function buildBentFromFixed(f, bpAngleDeg){
+  f = f.clone().normalize();
+  const bpRad = bpAngleDeg*Math.PI/180;
+  const axis = perpAxis(f);
+  const g = f.clone().applyAxisAngle(axis, bpRad);
+  const bisector = new THREE.Vector3().addVectors(f,g).normalize();
+  const antiBisector = bisector.clone().negate();
+  const outOfPlane = new THREE.Vector3().crossVectors(f,g).normalize();
+  const halfLP = (109.4712*Math.PI/180)/2;
+  const lp1 = antiBisector.clone().multiplyScalar(Math.cos(halfLP)).add(outOfPlane.clone().multiplyScalar(Math.sin(halfLP))).normalize();
+  const lp2 = antiBisector.clone().multiplyScalar(Math.cos(halfLP)).sub(outOfPlane.clone().multiplyScalar(Math.sin(halfLP))).normalize();
+  return { bonds:[g], lone:[lp1,lp2] };
+}
+
+// root-atom versions: no external "back" direction is fixed, so build the whole tripod/bent
+// shape from scratch with a clean canonical orientation (lone pair(s) pointing up).
+function buildTripodRoot(bpAngleDeg){
+  const bpRad = bpAngleDeg*Math.PI/180;
+  const cos2Beta = Math.max(0, Math.min(1, (Math.cos(bpRad)+0.5)/1.5));
+  const beta = Math.acos(Math.sqrt(cos2Beta));
+  const axisDown = new THREE.Vector3(0,-1,0);
+  const tiltAxis = perpAxis(axisDown);
+  const base = axisDown.clone().applyAxisAngle(tiltAxis, beta);
+  const bonds = [0,1,2].map(k=> base.clone().applyAxisAngle(axisDown, k*(2*Math.PI/3)));
+  return { bonds, lone:[ new THREE.Vector3(0,1,0) ] };
+}
+function buildBentRoot(bpAngleDeg){
+  const halfBP = (bpAngleDeg*Math.PI/180)/2;
+  const axisDown = new THREE.Vector3(0,-1,0);
+  const spreadAxis = new THREE.Vector3(0,0,1);
+  const bonds = [
+    axisDown.clone().applyAxisAngle(spreadAxis, halfBP),
+    axisDown.clone().applyAxisAngle(spreadAxis, -halfBP)
+  ];
+  const halfLP = (109.4712*Math.PI/180)/2;
+  const lpSpreadAxis = new THREE.Vector3(1,0,0);
+  const axisUp = new THREE.Vector3(0,1,0);
+  const lone = [
+    axisUp.clone().applyAxisAngle(lpSpreadAxis, halfLP),
+    axisUp.clone().applyAxisAngle(lpSpreadAxis, -halfLP)
+  ];
+  return { bonds, lone };
+}
+
+// shared core used by BOTH initial placement (computeChildDirections) and post-relaxation
+// resync (resyncLocalDirections), so the two can never drift out of sync with each other.
+function computeChildDomainDirections(el, back, bondOrder){
+  const openBondCount = Math.max(0, el.bonds - bondOrder);
+  // A multiple bond is one electron domain in VSEPR, regardless of whether it contains
+  // two or three shared electron pairs.
+  const total = 1 + openBondCount + el.lone;
+  if(total<=1) return { bondSlotDirs:[], lonePairDirs:[] };
+  if(total===4 && bondOrder===1 && COMPRESSED_ANGLE[el.lone] && el.bonds>=2){
+    const bpAngle = COMPRESSED_ANGLE[el.lone];
+    const built = el.lone===1 ? buildTripodFromFixed(back, bpAngle) : buildBentFromFixed(back, bpAngle);
+    return { bondSlotDirs: built.bonds, lonePairDirs: built.lone };
+  }
+  const others = otherDirections(back, total);
+  return {
+    bondSlotDirs: others.slice(0, openBondCount),
+    lonePairDirs: others.slice(openBondCount, openBondCount + el.lone)
+  };
+}
+
+function computeRootDirections(node){
+  const el = ELEMENTS[node.element];
+  const total = el.bonds + el.lone;
+  if(total===4 && COMPRESSED_ANGLE[el.lone] && el.bonds>=2){
+    const bpAngle = COMPRESSED_ANGLE[el.lone];
+    const built = el.lone===1 ? buildTripodRoot(bpAngle) : buildBentRoot(bpAngle);
+    node.bondSlotDirs = built.bonds;
+    node.lonePairDirs = built.lone;
+  } else {
+    const dirs = canonicalDirections(total);
+    node.bondSlotDirs = dirs.slice(0, el.bonds);
+    node.lonePairDirs = dirs.slice(el.bonds);
+  }
+  node.slots = new Array(node.bondSlotDirs.length).fill(null);
+}
+
+// bondOrder = how many of this atom's OWN bonding pairs are spent on the single edge
+// connecting it back to its parent (1 = single, 2 = double, 3 = triple bond).
+function computeChildDirections(node, dirFromParent, bondOrder){
+  bondOrder = bondOrder || 1;
+  const el = ELEMENTS[node.element];
+  const back = dirFromParent.clone().negate();
+  const result = computeChildDomainDirections(el, back, bondOrder);
+  node.bondSlotDirs = result.bondSlotDirs;
+  node.lonePairDirs = result.lonePairDirs;
+  node.slots = new Array(node.bondSlotDirs.length).fill(null);
+}
+
+// The root is created before its bond order is known. Once its first bond is a multiple bond,
+// rebuild the remaining electron domains around that one bond (O=O: 3 domains, N≡N: 2).
+function refineRootMultipleBondDomains(node, bondDir, bondOrder, consumedIndices){
+  const el = ELEMENTS[node.element];
+  if(node.parent || bondOrder<=1 || el.lone===0) return;
+  const uniqueChildren = new Set(node.slots.filter(id=>id && molecule.atomsById[id]));
+  if(uniqueChildren.size!==1) return;
+  const openIndices = node.slots.map((id,i)=>id===null?i:-1).filter(i=>i>=0);
+  const total = 1 + openIndices.length + el.lone;
+  const others = otherDirections(bondDir, total);
+  consumedIndices.forEach(i=>{ node.bondSlotDirs[i]=bondDir.clone(); });
+  openIndices.forEach((slotIndex,i)=>{ node.bondSlotDirs[slotIndex]=others[i].clone(); });
+  node.lonePairDirs = others.slice(openIndices.length, openIndices.length+el.lone).map(d=>d.clone());
+}
+
+function bondLength3D(elA, elB){
+  const ra = ELEMENTS[elA].radius, rb = ELEMENTS[elB].radius;
+  return Math.max(1.25, (ra+rb)*1.7);
+}
+
+function firstOpenSlot(node){
+  for(let i=0;i<node.slots.length;i++){ if(node.slots[i]===null) return i; }
+  return -1;
+}
+
+// finds `count` open slot indices on `parent`, always including `primaryIdx` first.
+// returns null if the parent doesn't have enough open slots to support that bond order.
+function findConsumableSlots(parent, primaryIdx, count){
+  if(parent.slots[primaryIdx]!==null) return null;
+  const result = [primaryIdx];
+  for(let i=0;i<parent.slots.length && result.length<count;i++){
+    if(i!==primaryIdx && parent.slots[i]===null) result.push(i);
+  }
+  return result.length===count ? result : null;
+}
+
+// how many MORE open slots (including the clicked one) a parent has available right now —
+// this caps which bond orders (단일/이중/삼중) are offered in the attach popup.
+function maxAvailableOrderAt(parent){
+  const openCount = parent.slots.filter(s=>s===null).length;
+  return Math.max(1, Math.min(3, openCount));
+}
+
+function allAtoms(){ return Object.values(molecule.atomsById); }
+
+function bondListDesc(){
+  // list of {parent,child} for every TREE bond in molecule (excludes ring-closure bonds)
+  const out=[];
+  allAtoms().forEach(n=>{ if(n.parent) out.push({parent:molecule.atomsById[n.parent], child:n}); });
+  return out;
+}
+
+// every bond in the molecule — tree bonds AND ring-closure bonds — normalized to {parent,child,order}
+// so dipole/formula/SVG code doesn't need to know which kind of bond it's looking at.
+function allBondEdges(){
+  const out = bondListDesc().map(e=>({ parent:e.parent, child:e.child, order:e.child.bondOrder||1, isRing:false }));
+  Object.values(molecule.ringBonds||{}).forEach(rb=>{
+    const a = molecule.atomsById[rb.a], b = molecule.atomsById[rb.b];
+    if(a && b) out.push({ parent:a, child:b, order:rb.order||1, isRing:true, ringId:rb.id });
+  });
+  return out;
+}
+
+function computeNetDipole(){
+  const sum = new THREE.Vector3();
+  allBondEdges().forEach(({parent,child})=>{
+    const enDiff = ELEMENTS[child.element].en - ELEMENTS[parent.element].en;
+    const dir = new THREE.Vector3().subVectors(child.pos3D, parent.pos3D).normalize();
+    sum.add(dir.multiplyScalar(enDiff));
+  });
+  return sum;
+}
+
+function moleculeCentroid(){
+  const atoms = allAtoms();
+  if(atoms.length===0) return new THREE.Vector3();
+  const c = new THREE.Vector3();
+  atoms.forEach(n=>c.add(n.pos3D));
+  c.multiplyScalar(1/atoms.length);
+  return c;
+}
+
+function computeMolecularFormula(){
+  const counts={};
+  allAtoms().forEach(n=>{ counts[n.element]=(counts[n.element]||0)+1; });
+  const symbols = Object.keys(counts);
+  if(symbols.length===0) return null;
+  let order;
+  if(counts['C']){
+    order = ['C','H', ...symbols.filter(s=>s!=='C'&&s!=='H').sort()];
+  } else {
+    order = symbols.slice().sort();
+  }
+  return order.filter(s=>counts[s]).map(s=> s + (counts[s]>1 ? ('<sub>'+counts[s]+'</sub>') : '')).join('');
+}
+
+function computeMolecularFormulaPlain(){
+  const counts={};
+  allAtoms().forEach(n=>{ counts[n.element]=(counts[n.element]||0)+1; });
+  const symbols = Object.keys(counts);
+  if(symbols.length===0) return null;
+  let order;
+  if(counts['C']) order = ['C','H', ...symbols.filter(s=>s!=='C'&&s!=='H').sort()];
+  else order = symbols.slice().sort();
+  return order.filter(s=>counts[s]).map(s=> s + (counts[s]>1 ? counts[s] : '')).join('');
+}
+
+// same counting logic, but works on a raw `steps` array (used to label presets before they're built)
+function formulaFromSteps(steps){
+  const counts={};
+  steps.forEach(s=> counts[s.el]=(counts[s.el]||0)+1);
+  const symbols = Object.keys(counts);
+  if(symbols.length===0) return '';
+  let order;
+  if(counts['C']) order = ['C','H', ...symbols.filter(s=>s!=='C'&&s!=='H').sort()];
+  else order = symbols.slice().sort();
+  return order.filter(s=>counts[s]).map(s=> s + (counts[s]>1 ? ('<sub>'+counts[s]+'</sub>') : '')).join('');
+}
+
+function countOpenSlots(){
+  let n=0;
+  allAtoms().forEach(a=>{ a.slots.forEach(s=>{ if(s===null) n++; }); });
+  return n;
+}
+
+// total descendant weight of a node's subtree (used to give bushier branches proportionally
+// more angular room in the 2D Lewis/structural layouts, so nothing overlaps as molecules grow).
+function subtreeWeight(node){
+  let w = 1;
+  // avoid double-counting a multi-bonded child through more than one consumed slot,
+  // and skip ring-bond markers — that neighbor already has its own position elsewhere in the tree.
+  const seen = new Set();
+  node.slots.forEach(id=>{
+    if(id && !seen.has(id) && molecule.atomsById[id]){
+      seen.add(id);
+      w += subtreeWeight(molecule.atomsById[id]);
+    }
+  });
+  return w;
+}
+
+/* ---------- 4. THREE.JS SCENE SETUP ---------- */
+let scene, camera, renderer, moleculeGroup, dipoleLayer, selectionHalos = {};
+let canvasEl, viewportEl;
+let camDistance = 8;
+const CAM_MIN = 2.6, CAM_MAX = 42;
+let dragging = false, lastPX=0, lastPY=0, velX=0, velY=0, lastMoveT=0;
+let pointerDownX=0, pointerDownY=0, pointerDownT=0, movedDist=0;
+let lastInteractionT = 0;
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+
+let showLonePairs = true;
+let showDipole = true;
+let autoSpin = true;
+
+function initScene(){
+  canvasEl = document.getElementById('three-canvas');
+  viewportEl = document.getElementById('viewport-wrap');
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0,0,camDistance);
+  camera.lookAt(0,0,0);
+
+  renderer = new THREE.WebGLRenderer({ canvas:canvasEl, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.65);
+  scene.add(ambient);
+  const dir1 = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir1.position.set(4,6,5);
+  scene.add(dir1);
+  const dir2 = new THREE.DirectionalLight(0x9ec6ff, 0.35);
+  dir2.position.set(-5,-3,-4);
+  scene.add(dir2);
+
+  moleculeGroup = new THREE.Group();
+  moleculeGroup.rotation.set(-0.35, 0.55, 0);
+  scene.add(moleculeGroup);
+
+  dipoleLayer = new THREE.Group();
+  moleculeGroup.add(dipoleLayer);
+
+  resizeRenderer();
+  window.addEventListener('resize', resizeRenderer);
+
+  wirePointerEvents();
+  requestAnimationFrame(renderLoop);
+}
+
+function resizeRenderer(){
+  const w = viewportEl.clientWidth, h = viewportEl.clientHeight;
+  if(w<=0||h<=0) return;
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w,h,false);
+}
+
+function renderLoop(now){
+  requestAnimationFrame(renderLoop);
+  // idle inertia decay
+  if(!dragging && (Math.abs(velX)>0.0001 || Math.abs(velY)>0.0001)){
+    moleculeGroup.rotation.y += velX;
+    moleculeGroup.rotation.x += velY;
+    clampTilt();
+    velX *= 0.94; velY *= 0.94;
+  }
+  // idle auto-rotate
+  if(!dragging && autoSpin && (now - lastInteractionT) > 2200){
+    moleculeGroup.rotation.y += 0.0028;
+  }
+  // pulse slot markers + lone pairs
+  const t = now*0.0022;
+  allAtoms().forEach(node=>{
+    node.slotMeshes.forEach(m=>{
+      if(!m) return;
+      const s = 1 + Math.sin(t + m.userData.phase)*0.12;
+      m.scale.setScalar(s * m.userData.baseScale);
+    });
+    node.lonePairMeshes.forEach(grp=>{
+      const s = 1 + Math.sin(t*1.3 + grp.userData.phase)*0.06;
+      grp.scale.setScalar(s);
+    });
+  });
+  Object.values(selectionHalos).forEach(h=>{
+    h.rotation.y += 0.01;
+    h.rotation.x += 0.004;
+  });
+  camera.position.set(0,0,camDistance);
+  renderer.render(scene, camera);
+}
+
+function clampTilt(){
+  moleculeGroup.rotation.x = Math.max(-1.45, Math.min(1.45, moleculeGroup.rotation.x));
+}
+
+function markInteraction(){ lastInteractionT = performance.now(); }
+
+function wirePointerEvents(){
+  canvasEl.addEventListener('pointerdown', (e)=>{
+    dragging = true;
+    canvasEl.classList.add('dragging');
+    canvasEl.setPointerCapture(e.pointerId);
+    lastPX = e.clientX; lastPY = e.clientY;
+    pointerDownX = e.clientX; pointerDownY = e.clientY; pointerDownT = performance.now();
+    movedDist = 0;
+    velX = 0; velY = 0;
+    markInteraction();
+  });
+  canvasEl.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const dx = e.clientX - lastPX, dy = e.clientY - lastPY;
+    lastPX = e.clientX; lastPY = e.clientY;
+    movedDist += Math.abs(dx)+Math.abs(dy);
+    const rx = dx*0.0055, ry = dy*0.0055;
+    moleculeGroup.rotation.y += rx;
+    moleculeGroup.rotation.x += ry;
+    clampTilt();
+    velX = rx; velY = ry;
+    markInteraction();
+  });
+  function endDrag(e){
+    if(!dragging) return;
+    dragging = false;
+    canvasEl.classList.remove('dragging');
+    const dt = performance.now()-pointerDownT;
+    if(movedDist < 6 && dt < 400){
+      const additive = !!(e.shiftKey || e.ctrlKey || e.metaKey);
+      handleCanvasClick(pointerDownX, pointerDownY, additive);
+    }
+    markInteraction();
+  }
+  canvasEl.addEventListener('pointerup', endDrag);
+  canvasEl.addEventListener('pointercancel', endDrag);
+  canvasEl.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    camDistance = Math.max(CAM_MIN, Math.min(CAM_MAX, camDistance + e.deltaY*0.0065*camDistance*0.35));
+    markInteraction();
+  }, { passive:false });
+}
+
+function handleCanvasClick(clientX, clientY, additive){
+  const rect = canvasEl.getBoundingClientRect();
+  ndc.x = ((clientX-rect.left)/rect.width)*2-1;
+  ndc.y = -((clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(moleculeGroup.children, true);
+  for(const h of hits){
+    let o = h.object;
+    while(o && !o.userData.type){ o = o.parent; }
+    if(!o) continue;
+    if(o.userData.type==='atom'){ handleAtomClick(o.userData.atomId, additive); return; }
+    if(o.userData.type==='slot'){ openSlotPicker(o.userData.parentId, o.userData.slotIndex, clientX, clientY); return; }
+  }
+  if(!additive) clearSelection();
+}
+
+/* ---------- 5. MESH BUILDERS ---------- */
+function makeTextSprite(text, textColor, bgColor, sizePx){
+  sizePx = sizePx || 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = bgColor;
+  roundRectPath(ctx, 2,2,124,60,14);
+  ctx.fill();
+  ctx.font = '700 40px IBM Plex Mono, monospace';
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 64, 34);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false });
+  const spr = new THREE.Sprite(mat);
+  return spr;
+}
+function roundRectPath(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function makeAtomMesh(elSym){
+  const el = ELEMENTS[elSym];
+  const geo = new THREE.SphereGeometry(el.radius, 32, 24);
+  const mat = new THREE.MeshStandardMaterial({ color: el.color, roughness:0.45, metalness:0.12 });
+  return new THREE.Mesh(geo, mat);
+}
+
+function makeLabelSprite(elSym){
+  const el = ELEMENTS[elSym];
+  const spr = makeTextSprite(el.symbol, '#1c2024', 'rgba(255,255,255,0.92)');
+  const s = 0.62;
+  spr.scale.set(s, s*0.5, 1);
+  return spr;
+}
+
+// Builds `order` parallel cylinders between p1 and p2 (1 = single, 2 = double, 3 = triple bond),
+// offset side-by-side like a normal structural-formula drawing. Returns a group plus per-line
+// endpoint data so the caller can animate them growing outward together.
+function makeBondMeshGroup(p1, p2, order){
+  order = order || 1;
+  const group = new THREE.Group();
+  const dir = new THREE.Vector3().subVectors(p2,p1).normalize();
+  const perp = lonePairDotAxis(dir);
+  const offsets = order===1 ? [0] : order===2 ? [-0.115,0.115] : [-0.16,0,0.16];
+  const lineRadius = order===1 ? 0.085 : 0.055;
+  const lines = offsets.map(off=>{
+    const offVec = perp.clone().multiplyScalar(off);
+    const a = p1.clone().add(offVec), b = p2.clone().add(offVec);
+    const len = a.distanceTo(b);
+    const nativeHeight = Math.max(len,0.001);
+    const geo = new THREE.CylinderGeometry(lineRadius, lineRadius, nativeHeight, 12);
+    const mat = new THREE.MeshStandardMaterial({ color:0xcbd2c6, roughness:0.55, metalness:0.08 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.nativeHeight = nativeHeight; // read back later so relaxation can rescale without guessing
+    const up = new THREE.Vector3(0,1,0);
+    mesh.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(up, dir));
+    mesh.scale.y = 0.001;
+    mesh.position.copy(a);
+    group.add(mesh);
+    return { mesh, a, b };
+  });
+  return { group, lines };
+}
+
+function animateBondGroupGrowth(bondGroupData, duration){
+  const fullLens = bondGroupData.lines.map(l=> l.a.distanceTo(l.b));
+  const dirs = bondGroupData.lines.map(l=> new THREE.Vector3().subVectors(l.b,l.a).normalize());
+  animateValue(duration, (e)=>{
+    bondGroupData.lines.forEach((l,i)=>{
+      l.mesh.scale.y = Math.max(0.001, e);
+      const currLen = fullLens[i]*e;
+      l.mesh.position.copy(l.a.clone().add(dirs[i].clone().multiplyScalar(currLen/2)));
+    });
+  }, null, easeOutCubic);
+}
+
+function makeSlotMarker(parentNode, slotIndex){
+  const dir = parentNode.bondSlotDirs[slotIndex];
+  const genericDist = bondLength3D(parentNode.element, 'H');
+  const pos = parentNode.pos3D.clone().add(dir.clone().multiplyScalar(genericDist));
+  const geo = new THREE.SphereGeometry(0.20, 20, 16);
+  const mat = new THREE.MeshStandardMaterial({
+    color:0x8fd8e8, transparent:true, opacity:0.5,
+    emissive:0x2a6b7a, emissiveIntensity:0.5, roughness:0.3, metalness:0.1
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(pos);
+  mesh.userData = { type:'slot', parentId:parentNode.id, slotIndex, phase:Math.random()*Math.PI*2, baseScale:1 };
+  mesh.scale.setScalar(0.001);
+  moleculeGroup.add(mesh);
+  animateValue(260, (e)=>{ mesh.scale.setScalar(e); }, null, easeOutBack);
+  return mesh;
+}
+
+function makeLonePairGroup(atomNode, dir){
+  const el = ELEMENTS[atomNode.element];
+  const dist = el.radius*1.35 + 0.16;
+  const base = atomNode.pos3D.clone().add(dir.clone().multiplyScalar(dist));
+  const perp = perpAxis(dir);
+  const grp = new THREE.Group();
+  const dotMat = new THREE.MeshStandardMaterial({ color:0xf5d98a, emissive:0x8a6a1f, emissiveIntensity:0.4, roughness:0.4 });
+  [-1,1].forEach(s=>{
+    const geo = new THREE.SphereGeometry(0.075, 12, 10);
+    const dot = new THREE.Mesh(geo, dotMat);
+    dot.position.copy(perp.clone().multiplyScalar(s*0.13));
+    grp.add(dot);
+  });
+  grp.position.copy(base);
+  grp.userData = { phase: Math.random()*Math.PI*2 };
+  grp.scale.setScalar(0.001);
+  moleculeGroup.add(grp);
+  animateValue(420, (e)=>{ grp.scale.setScalar(e); }, null, easeOutBack);
+  return grp;
+}
+
+function createArrowMesh(origin, dir, length, colorHex, withPlus, plusColorCss){
+  const group = new THREE.Group();
+  const thickness = 0.045;
+  const shaftLen = length*0.7, headLen = length*0.3;
+  const shaftGeo = new THREE.CylinderGeometry(thickness, thickness, shaftLen, 10);
+  const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness:0.4, metalness:0.15 });
+  const shaft = new THREE.Mesh(shaftGeo, mat);
+  shaft.position.y = shaftLen/2;
+  group.add(shaft);
+  const headGeo = new THREE.ConeGeometry(thickness*2.6, headLen, 14);
+  const head = new THREE.Mesh(headGeo, mat);
+  head.position.y = shaftLen + headLen/2;
+  group.add(head);
+  if(withPlus){
+    const plus = makeTextSprite('+', plusColorCss||'#a83f56', 'rgba(255,255,255,0.95)');
+    plus.scale.set(0.34, 0.17, 1);
+    plus.position.set(0, -0.16, 0);
+    group.add(plus);
+  }
+  const up = new THREE.Vector3(0,1,0);
+  const ndir = dir.clone().normalize();
+  group.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(up, ndir));
+  group.position.copy(origin);
+  return group;
+}
+
+function makeSelectionHalo(node){
+  const el = ELEMENTS[node.element];
+  const geo = new THREE.SphereGeometry(el.radius*1.4, 20, 16);
+  const mat = new THREE.MeshBasicMaterial({ color:0x3a5a9c, wireframe:true, transparent:true, opacity:0.55 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(node.pos3D);
+  mesh.scale.setScalar(0.001);
+  moleculeGroup.add(mesh);
+  animateValue(260, (e)=>{ mesh.scale.setScalar(e); }, null, easeOutBack);
+  return mesh;
+}
+
+function disposeObject3D(obj){
+  obj.traverse((o)=>{
+    // NOTE: THREE.Sprite instances share a single static module-level BufferGeometry
+    // across the whole app — never dispose it, or every other sprite breaks.
+    if(o.geometry && !o.isSprite) o.geometry.dispose();
+    if(o.material){
+      if(Array.isArray(o.material)) o.material.forEach(m=>{ if(m.map) m.map.dispose(); m.dispose(); });
+      else { if(o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    }
+  });
+}
+
+/* ---------- 6. MOLECULE MUTATION (incremental, animated) ---------- */
+function clearMoleculeAll(){
+  allAtoms().forEach(n=>{
+    if(n.meshAtom) disposeObject3D(n.meshAtom);
+    if(n.meshLabel) disposeObject3D(n.meshLabel);
+    if(n.bondMesh) disposeObject3D(n.bondMesh);
+    n.slotMeshes.forEach(m=>{ if(m) disposeObject3D(m); });
+    n.lonePairMeshes.forEach(m=>disposeObject3D(m));
+  });
+  Object.values(molecule.ringBonds||{}).forEach(rb=>{ if(rb.mesh) disposeObject3D(rb.mesh); });
+  moleculeGroup.children.slice().forEach(c=>{
+    if(c===dipoleLayer) return;
+    moleculeGroup.remove(c);
+  });
+  Object.values(selectionHalos).forEach(h=>{ moleculeGroup.remove(h); disposeObject3D(h); });
+  selectionHalos = {};
+  molecule = { root:null, atomsById:{}, ringBonds:{} };
+  actionHistory = [];
+  selectedAtomIds = new Set();
+}
+
+function spawnAtomVisuals(node){
+  // atom sphere
+  const mesh = makeAtomMesh(node.element);
+  mesh.position.copy(node.pos3D);
+  mesh.userData = { type:'atom', atomId: node.id };
+  mesh.scale.setScalar(0.001);
+  moleculeGroup.add(mesh);
+  node.meshAtom = mesh;
+  animateValue(480, (e)=>{ mesh.scale.setScalar(e); }, null, easeOutBack);
+
+  // label sprite
+  const label = makeLabelSprite(node.element);
+  const elR = ELEMENTS[node.element].radius;
+  label.position.copy(node.pos3D.clone().add(new THREE.Vector3(0, elR+0.42, 0)));
+  label.material.opacity = 0;
+  moleculeGroup.add(label);
+  node.meshLabel = label;
+  animateValue(480, (e)=>{ label.material.opacity = e; }, null, easeOutCubic);
+
+  // lone pairs
+  node.lonePairDirs.forEach(dir=>{
+    const grp = makeLonePairGroup(node, dir);
+    grp.visible = showLonePairs;
+    node.lonePairMeshes.push(grp);
+  });
+
+  // open slot markers for this node's own bonding sites
+  node.slotMeshes = node.bondSlotDirs.map((d,i)=> makeSlotMarker(node, i));
+}
+
+function setRootAtom(elementSymbol){
+  clearMoleculeAll();
+  const root = createAtomNode(elementSymbol, null, null);
+  root.pos3D = new THREE.Vector3(0,0,0);
+  computeRootDirections(root);
+  molecule.root = root;
+  molecule.atomsById[root.id] = root;
+  actionHistory.push({ parentId:null, slotIndex:null, consumedSlotIndices:[], childId:root.id });
+  spawnAtomVisuals(root);
+  rebuildDipoleLayer();
+  refreshAll();
+  showDragHintOnce();
+  scheduleRelax();
+}
+
+// bondOrder: 1 = single, 2 = double, 3 = triple. A double/triple bond consumes that many of the
+// PARENT's open slots (rendered as one merged bond with N parallel lines) and that many of the
+// CHILD's own bonding pairs, so both atoms' remaining open valence stays chemically correct.
+function addAtom(parentNode, slotIndex, elementSymbol, bondOrder){
+  bondOrder = bondOrder || 1;
+  if(slotIndex<0 || parentNode.slots[slotIndex]!==null) return null;
+  const childMaxOrder = ELEMENTS[elementSymbol].bonds;
+  if(bondOrder > childMaxOrder) bondOrder = childMaxOrder;
+  const consumedIdx = findConsumableSlots(parentNode, slotIndex, bondOrder);
+  if(!consumedIdx) return null;
+
+  const dir = parentNode.bondSlotDirs[slotIndex].clone();
+  const bLen = bondLength3D(parentNode.element, elementSymbol);
+  const pos = parentNode.pos3D.clone().add(dir.clone().multiplyScalar(bLen));
+
+  const child = createAtomNode(elementSymbol, parentNode.id, dir);
+  child.pos3D = pos;
+  child.bondOrder = bondOrder;
+  child.parentSlotIndex = slotIndex;
+  child.consumedSlotIndices = consumedIdx;
+  computeChildDirections(child, dir, bondOrder);
+  molecule.atomsById[child.id] = child;
+  consumedIdx.forEach(idx=>{ parentNode.slots[idx] = child.id; });
+  refineRootMultipleBondDomains(parentNode, dir, bondOrder, consumedIdx);
+  repositionDependents(parentNode);
+  actionHistory.push({ parentId:parentNode.id, slotIndex, consumedSlotIndices:consumedIdx, childId:child.id });
+
+  // remove every slot marker this bond consumes
+  consumedIdx.forEach(idx=>{
+    const oldMarker = parentNode.slotMeshes[idx];
+    if(oldMarker){
+      animateValue(180, (e)=>{ oldMarker.scale.setScalar(1-e); }, ()=>{
+        moleculeGroup.remove(oldMarker); disposeObject3D(oldMarker);
+      }, easeOutCubic);
+      parentNode.slotMeshes[idx] = null;
+    }
+  });
+
+  // bond mesh group (1–3 parallel cylinders depending on bond order), zero-length before adding
+  // to the scene to avoid a one-frame flash of the full-length mesh.
+  const bondGroupData = makeBondMeshGroup(parentNode.pos3D, child.pos3D, bondOrder);
+  moleculeGroup.add(bondGroupData.group);
+  child.bondMesh = bondGroupData.group;
+  animateBondGroupGrowth(bondGroupData, 420);
+
+  spawnAtomVisuals(child);
+  rebuildDipoleLayer();
+  refreshAll();
+  scheduleRelax();
+  return child;
+}
+
+function restoreSlotsOnParent(parent, indices){
+  indices.forEach(idx=>{
+    parent.slots[idx] = null;
+    parent.slotMeshes[idx] = makeSlotMarker(parent, idx);
+  });
+}
+
+function disposeAtomVisuals(node){
+  if(node.meshAtom){ moleculeGroup.remove(node.meshAtom); disposeObject3D(node.meshAtom); }
+  if(node.meshLabel){ moleculeGroup.remove(node.meshLabel); disposeObject3D(node.meshLabel); }
+  if(node.bondMesh){ moleculeGroup.remove(node.bondMesh); disposeObject3D(node.bondMesh); }
+  node.slotMeshes.forEach(m=>{ if(m){ moleculeGroup.remove(m); disposeObject3D(m); } });
+  node.lonePairMeshes.forEach(m=>{ moleculeGroup.remove(m); disposeObject3D(m); });
+}
+
+function undoLast(){
+  if(actionHistory.length===0) return;
+  const last = actionHistory.pop();
+
+  if(last.type==='ring'){
+    cleanupRingBond(last.ringId);
+    rebuildDipoleLayer();
+    refreshAll();
+    scheduleRelax();
+    return;
+  }
+
+  const node = molecule.atomsById[last.childId];
+  if(!node) return;
+  disposeAtomVisuals(node);
+  delete molecule.atomsById[node.id];
+
+  if(selectedAtomIds.has(node.id)){ selectedAtomIds.delete(node.id); refreshSelectionVisuals(); updateConnectAction(); updateAngleBadge(); }
+
+  if(last.parentId){
+    const parent = molecule.atomsById[last.parentId];
+    restoreSlotsOnParent(parent, last.consumedSlotIndices || [last.slotIndex]);
+  } else {
+    molecule.root = null;
+  }
+  rebuildDipoleLayer();
+  refreshAll();
+  scheduleRelax();
+}
+
+// deletes a specific atom (selected via click) and its entire subtree — used by the Backspace shortcut.
+function deleteAtomCascade(nodeId){
+  const node = molecule.atomsById[nodeId];
+  if(!node) return;
+
+  const idsToRemove = [];
+  (function collect(n){
+    idsToRemove.push(n.id);
+    const seen = new Set();
+    n.slots.forEach(sid=>{
+      if(!sid || seen.has(sid)) return;
+      seen.add(sid);
+      if(molecule.atomsById[sid]) collect(molecule.atomsById[sid]); // only recurse into real tree children, not ring-bond markers
+    });
+  })(node);
+  const idSet = new Set(idsToRemove);
+
+  // any ring bond touching a to-be-removed atom must be cleaned up too (and its surviving
+  // endpoint's slot reopened, unless that endpoint is also being removed)
+  Object.keys(molecule.ringBonds).forEach(ringId=>{
+    const rb = molecule.ringBonds[ringId];
+    if(!idSet.has(rb.a) && !idSet.has(rb.b)) return;
+    if(rb.mesh){ moleculeGroup.remove(rb.mesh); disposeObject3D(rb.mesh); }
+    const survivorId = idSet.has(rb.a) ? rb.b : rb.a;
+    const survivorConsumed = idSet.has(rb.a) ? rb.consumedB : rb.consumedA;
+    const survivor = molecule.atomsById[survivorId];
+    if(survivor && !idSet.has(survivorId)) restoreSlotsOnParent(survivor, survivorConsumed);
+    delete molecule.ringBonds[ringId];
+    actionHistory = actionHistory.filter(e=> !(e.type==='ring' && e.ringId===ringId));
+  });
+
+  idsToRemove.forEach(id=>{
+    const n = molecule.atomsById[id];
+    if(n) disposeAtomVisuals(n);
+  });
+
+  actionHistory = actionHistory.filter(a => !(a.childId && idSet.has(a.childId)));
+
+  let selectionChanged = false;
+  idSet.forEach(id=>{ if(selectedAtomIds.has(id)){ selectedAtomIds.delete(id); selectionChanged = true; } });
+  if(selectionChanged){ refreshSelectionVisuals(); updateConnectAction(); updateAngleBadge(); }
+
+  if(node.parent){
+    const parent = molecule.atomsById[node.parent];
+    if(parent) restoreSlotsOnParent(parent, node.consumedSlotIndices || [node.parentSlotIndex]);
+  } else {
+    molecule.root = null;
+  }
+
+  idsToRemove.forEach(id=> delete molecule.atomsById[id]);
+
+  rebuildDipoleLayer();
+  refreshAll();
+  scheduleRelax();
+}
+
+function resetMolecule(){
+  clearMoleculeAll();
+  rebuildDipoleLayer();
+  refreshAll();
+}
+
+/* ---------- 6b. AUTO-RELAX LAYOUT — reflows positions after every structural change ---------- */
+// Every bond (tree or ring) acts like a spring pulling toward its correct length; every
+// non-bonded pair pushes weakly apart. That's the same idea VSEPR itself is built on
+// ("electron domains spread out to minimize repulsion") — so it doubles as a cheap way to keep
+// branches from overlapping AND to pull a freshly-closed ring into a sane loop shape instead of
+// leaving one bond stretched across the whole molecule.
+function computeRelaxedPositions(iterations){
+  const atoms = allAtoms();
+  if(atoms.length < 2) return null;
+
+  const pos = {};
+  atoms.forEach(a=> pos[a.id] = a.pos3D.clone());
+
+  const edges = allBondEdges();
+  const pairKey = (id1,id2)=> id1<id2 ? id1+'|'+id2 : id2+'|'+id1;
+  const bondedSet = new Set();
+  const restLen = {};
+  edges.forEach(e=>{
+    const key = pairKey(e.parent.id, e.child.id);
+    bondedSet.add(key);
+    restLen[key] = bondLength3D(e.parent.element, e.child.element);
+  });
+
+  const N = iterations || 90;
+  for(let iter=0; iter<N; iter++){
+    const force = {};
+    atoms.forEach(a=> force[a.id] = new THREE.Vector3());
+
+    // bond springs — pull each bonded pair toward its correct length
+    edges.forEach(e=>{
+      const key = pairKey(e.parent.id, e.child.id);
+      const pa = pos[e.parent.id], pb = pos[e.child.id];
+      const delta = new THREE.Vector3().subVectors(pb, pa);
+      let dist = delta.length();
+      if(dist < 1e-4){ delta.set((Math.random()-0.5)*0.02,(Math.random()-0.5)*0.02,(Math.random()-0.5)*0.02); dist = delta.length()||1e-4; }
+      const dir = delta.divideScalar(dist);
+      const stretch = dist - restLen[key];
+      const f = dir.multiplyScalar(stretch * 0.6);
+      force[e.parent.id].add(f);
+      force[e.child.id].sub(f);
+    });
+
+    // weak repulsion between every non-bonded pair — keeps unrelated branches from overlapping
+    for(let i=0;i<atoms.length;i++){
+      for(let j=i+1;j<atoms.length;j++){
+        const idA=atoms[i].id, idB=atoms[j].id;
+        if(bondedSet.has(pairKey(idA,idB))) continue;
+        const pa=pos[idA], pb=pos[idB];
+        const delta = new THREE.Vector3().subVectors(pb,pa);
+        let dist = delta.length();
+        if(dist < 1e-4){ delta.set((Math.random()-0.5)*0.02,(Math.random()-0.5)*0.02,(Math.random()-0.5)*0.02); dist = delta.length()||1e-4; }
+        if(dist < 2.6){
+          const dir = delta.divideScalar(dist);
+          const strength = Math.min(0.45, 1.1/(dist*dist));
+          force[idA].sub(dir.clone().multiplyScalar(strength));
+          force[idB].add(dir.clone().multiplyScalar(strength));
+        }
+      }
+    }
+
+    atoms.forEach(a=>{
+      const f = force[a.id].multiplyScalar(0.35);
+      const maxStep = 0.14;
+      if(f.length() > maxStep) f.setLength(maxStep);
+      pos[a.id].add(f);
+    });
+  }
+
+  // recenter so the molecule doesn't slowly drift away from the camera's focal point
+  const centroid = new THREE.Vector3();
+  atoms.forEach(a=> centroid.add(pos[a.id]));
+  centroid.divideScalar(atoms.length);
+  atoms.forEach(a=> pos[a.id].sub(centroid));
+
+  return pos;
+}
+
+// repositions an existing bond-mesh group's lines to connect new endpoints, reusing the original
+// cylinder geometry (no re-creation) so it's cheap enough to call every animation frame.
+function updateBondMeshGroupTransform(group, p1, p2, order){
+  const dir = new THREE.Vector3().subVectors(p2,p1);
+  const fallbackLen = dir.length() || 0.001;
+  dir.normalize();
+  const perp = perpAxis(dir);
+  const offsets = order===1 ? [0] : order===2 ? [-0.115,0.115] : [-0.16,0,0.16];
+  const up = new THREE.Vector3(0,1,0);
+  const quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+  group.children.forEach((mesh,i)=>{
+    const off = offsets[i]!==undefined ? offsets[i] : 0;
+    const offVec = perp.clone().multiplyScalar(off);
+    const a = p1.clone().add(offVec), b = p2.clone().add(offVec);
+    const nativeHeight = mesh.userData.nativeHeight || fallbackLen;
+    mesh.scale.y = Math.max(0.001, a.distanceTo(b) / nativeHeight);
+    mesh.position.copy(a.clone().add(b).multiplyScalar(0.5));
+    mesh.quaternion.copy(quat);
+  });
+}
+
+// repositions a node's label / lone pairs / open-slot markers relative to its CURRENT pos3D and
+// CURRENT direction vectors — used both mid-transition (translating with stale directions looks
+// fine) and once more after resyncLocalDirections at the end (snaps them to the final orientation).
+function repositionDependents(node){
+  if(node.meshLabel){
+    const r = ELEMENTS[node.element].radius;
+    node.meshLabel.position.copy(node.pos3D.clone().add(new THREE.Vector3(0, r+0.42, 0)));
+  }
+  node.lonePairMeshes.forEach((grp, i)=>{
+    const dir = node.lonePairDirs[i];
+    if(!dir || !grp) return;
+    const dist = ELEMENTS[node.element].radius*1.35 + 0.16;
+    grp.position.copy(node.pos3D.clone().add(dir.clone().multiplyScalar(dist)));
+    const pairAxis = lonePairDotAxis(dir);
+    grp.children.forEach((dot,j)=>{
+      dot.position.copy(pairAxis.clone().multiplyScalar((j===0?-1:1)*0.13));
+    });
+  });
+  node.slotMeshes.forEach((mesh, i)=>{
+    const dir = node.bondSlotDirs[i];
+    if(!mesh || !dir) return;
+    const dist = bondLength3D(node.element, 'H');
+    mesh.position.copy(node.pos3D.clone().add(dir.clone().multiplyScalar(dist)));
+  });
+}
+
+// after relaxation moves a node, its bondSlotDirs/lonePairDirs (the LOCAL VSEPR shape) are
+// re-derived from its actual new direction to its parent — same cone-math as at creation, just
+// re-aimed. node.slots itself (which child owns which index) is untouched; only the directions
+// those indices point in are refreshed.
+function resyncLocalDirections(node){
+  if(!node.parent) return; // root keeps its original canonical orientation as the anchor frame
+  const el = ELEMENTS[node.element];
+  const total = el.bonds + el.lone;
+  if(total <= 1) return;
+  const parent = molecule.atomsById[node.parent];
+  if(!parent) return;
+  const back = new THREE.Vector3().subVectors(parent.pos3D, node.pos3D).normalize();
+  node.dirFromParent = back.clone().negate();
+  const result = computeChildDomainDirections(el, back, node.bondOrder||1);
+  node.bondSlotDirs = result.bondSlotDirs;
+  node.lonePairDirs = result.lonePairDirs;
+}
+
+let relaxTimer = null;
+let relaxGeneration = 0;
+function scheduleRelax(delay){
+  clearTimeout(relaxTimer);
+  relaxTimer = setTimeout(runRelaxation, delay===undefined ? 480 : delay);
+}
+
+// the generic spring/repulsion relaxation doesn't know that a lone-pair vertex's bonding
+// pairs SHOULD sit closer together than plain non-bonded repulsion would push them — so after
+// physics settles, snap each lone-pair vertex's real (bonded) children back onto the exact
+// VSEPR-refined directions computed by resyncLocalDirections, preserving bond length.
+function enforceLonePairAngles(){
+  allAtoms().forEach(node=>{
+    const el = ELEMENTS[node.element];
+    if(!(el.bonds+el.lone===4 && COMPRESSED_ANGLE[el.lone])) return;
+    node.slots.forEach((cid,i)=>{
+      if(!cid || !molecule.atomsById[cid]) return; // skip empty slots and ring-bond markers
+      const child = molecule.atomsById[cid];
+      const dir = node.bondSlotDirs[i];
+      if(!dir) return;
+      const bLen = bondLength3D(node.element, child.element);
+      const targetPos = node.pos3D.clone().add(dir.clone().multiplyScalar(bLen));
+      const delta = targetPos.clone().sub(child.pos3D);
+      if(delta.lengthSq() < 1e-8) return; // already correct
+      translateSubtree(child, delta);
+    });
+  });
+}
+
+function translateSubtree(node, delta){
+  node.pos3D.add(delta);
+  if(node.meshAtom) node.meshAtom.position.copy(node.pos3D);
+  if(selectionHalos[node.id]) selectionHalos[node.id].position.copy(node.pos3D);
+  repositionDependents(node);
+  const seen = new Set();
+  node.slots.forEach(cid=>{
+    if(cid && !seen.has(cid) && molecule.atomsById[cid]){
+      seen.add(cid);
+      translateSubtree(molecule.atomsById[cid], delta);
+    }
+  });
+}
+
+function runRelaxation(){
+  const targets = computeRelaxedPositions(90);
+  if(!targets) return;
+  const myGen = ++relaxGeneration;
+  const atoms = allAtoms();
+  const oldPos = {};
+  atoms.forEach(a=> oldPos[a.id] = a.pos3D.clone());
+
+  animateValue(650, (e)=>{
+    if(myGen !== relaxGeneration) return; // a newer relaxation has since started — stop here
+    atoms.forEach(a=>{
+      const np = targets[a.id];
+      if(!np) return;
+      a.pos3D.copy(oldPos[a.id]).lerp(np, e);
+      if(a.meshAtom) a.meshAtom.position.copy(a.pos3D);
+      if(selectionHalos[a.id]) selectionHalos[a.id].position.copy(a.pos3D);
+      repositionDependents(a);
+    });
+    bondListDesc().forEach(({parent,child})=>{
+      if(child.bondMesh) updateBondMeshGroupTransform(child.bondMesh, parent.pos3D, child.pos3D, child.bondOrder||1);
+    });
+    Object.values(molecule.ringBonds).forEach(rb=>{
+      const a = molecule.atomsById[rb.a], b = molecule.atomsById[rb.b];
+      if(a && b && rb.mesh) updateBondMeshGroupTransform(rb.mesh, a.pos3D, b.pos3D, rb.order||1);
+    });
+    updateAngleBadge(); // live-update the readout so the number visibly settles as the structure does
+  }, ()=>{
+    if(myGen !== relaxGeneration) return;
+    atoms.forEach(a=> resyncLocalDirections(a));
+    enforceLonePairAngles(); // snap H-N-H / H-O-H etc. back to the exact VSEPR-refined angle
+    atoms.forEach(a=> repositionDependents(a));
+    bondListDesc().forEach(({parent,child})=>{
+      if(child.bondMesh) updateBondMeshGroupTransform(child.bondMesh, parent.pos3D, child.pos3D, child.bondOrder||1);
+    });
+    Object.values(molecule.ringBonds).forEach(rb=>{
+      const a = molecule.atomsById[rb.a], b = molecule.atomsById[rb.b];
+      if(a && b && rb.mesh) updateBondMeshGroupTransform(rb.mesh, a.pos3D, b.pos3D, rb.order||1);
+    });
+    rebuildDipoleLayer();
+    updateConnectAction(); updateAngleBadge();
+  }, easeOutCubic);
+}
+
+/* ---------- 7. DIPOLE LAYER (full rebuild on toggle / mutation) ---------- */
+function rebuildDipoleLayer(){
+  dipoleLayer.children.slice().forEach(c=>{ dipoleLayer.remove(c); disposeObject3D(c); });
+  if(!showDipole) return;
+  allBondEdges().forEach(({parent,child})=>{
+    const enDiff = ELEMENTS[child.element].en - ELEMENTS[parent.element].en;
+    const absDiff = Math.abs(enDiff);
+    if(absDiff < 0.05) return;
+    const bondDir = new THREE.Vector3().subVectors(child.pos3D, parent.pos3D).normalize();
+    const dipoleDir = enDiff>=0 ? bondDir : bondDir.clone().negate();
+    const mid = new THREE.Vector3().addVectors(parent.pos3D, child.pos3D).multiplyScalar(0.5);
+    const len = 0.55 + Math.min(1, absDiff/2.0)*0.55;
+    const origin = mid.clone().sub(dipoleDir.clone().multiplyScalar(len/2));
+    const arrow = createArrowMesh(origin, dipoleDir, len, 0xa83f56, true, '#a83f56');
+    dipoleLayer.add(arrow);
+  });
+  const net = computeNetDipole();
+  if(net.length() > 0.12){
+    const centroid = moleculeCentroid();
+    const dir = net.clone().normalize();
+    const len = 0.9 + Math.min(1, net.length()/2.5)*0.9;
+    const origin = centroid.clone().sub(dir.clone().multiplyScalar(len*0.15));
+    const arrow = createArrowMesh(origin, dir, len, 0x6d4fa0, false);
+    dipoleLayer.add(arrow);
+  }
+}
+
+/* ---------- 8. SELECTION (multi-select) + RING-BOND CONNECT ---------- */
+function refreshSelectionVisuals(){
+  Object.keys(selectionHalos).forEach(id=>{
+    if(!selectedAtomIds.has(id)){
+      moleculeGroup.remove(selectionHalos[id]); disposeObject3D(selectionHalos[id]); delete selectionHalos[id];
+    }
+  });
+  selectedAtomIds.forEach(id=>{
+    if(!selectionHalos[id]){
+      const node = molecule.atomsById[id];
+      if(node) selectionHalos[id] = makeSelectionHalo(node);
+    }
+  });
+}
+
+function handleAtomClick(atomId, additive){
+  if(additive){
+    if(selectedAtomIds.has(atomId)) selectedAtomIds.delete(atomId);
+    else selectedAtomIds.add(atomId);
+  } else {
+    selectedAtomIds = new Set([atomId]);
+  }
+  refreshSelectionVisuals();
+  renderPropertiesPanel();
+  setActiveTab('properties');
+  updateConnectAction(); updateAngleBadge();
+}
+function clearSelection(){
+  selectedAtomIds = new Set();
+  refreshSelectionVisuals();
+  renderPropertiesPanel();
+  updateConnectAction(); updateAngleBadge();
+}
+
+// bond order the system will use if the two currently-selected atoms are connected —
+// capped by whichever atom has less open capacity left, and by 3 (single/double/triple).
+function autoBondOrderFor(a, b){
+  const openA = a.slots.filter(s=>s===null).length;
+  const openB = b.slots.filter(s=>s===null).length;
+  return Math.max(0, Math.min(3, openA, openB, ELEMENTS[a.element].bonds, ELEMENTS[b.element].bonds));
+}
+function findRingBondBetween(idA, idB){
+  return Object.values(molecule.ringBonds).find(rb => (rb.a===idA&&rb.b===idB) || (rb.a===idB&&rb.b===idA)) || null;
+}
+
+function updateConnectAction(){
+  const btn = document.getElementById('connect-action');
+  if(!btn) return;
+  if(selectedAtomIds.size!==2){ btn.classList.remove('show'); return; }
+  const [idA, idB] = Array.from(selectedAtomIds);
+  const a = molecule.atomsById[idA], b = molecule.atomsById[idB];
+  if(!a || !b){ btn.classList.remove('show'); return; }
+
+  if(a.parent===b.id || b.parent===a.id){
+    btn.textContent = '이미 결합으로 연결되어 있어요';
+    btn.disabled = true;
+    btn.dataset.mode = '';
+    btn.classList.add('show');
+    return;
+  }
+  const existingRing = findRingBondBetween(idA, idB);
+  if(existingRing){
+    btn.textContent = `⊘ ${ELEMENTS[a.element].symbol}–${ELEMENTS[b.element].symbol} 결합 끊기`;
+    btn.disabled = false;
+    btn.dataset.mode = 'disconnect';
+    btn.dataset.ringId = existingRing.id;
+    btn.classList.add('show');
+    return;
+  }
+  const order = autoBondOrderFor(a, b);
+  if(order<=0){
+    btn.textContent = '남은 결합 자리가 없어 연결할 수 없어요';
+    btn.disabled = true;
+    btn.dataset.mode = '';
+    btn.classList.add('show');
+    return;
+  }
+  const sym = order===3?'≡':order===2?'=':'—';
+  btn.textContent = `${ELEMENTS[a.element].symbol}${sym}${ELEMENTS[b.element].symbol} 로 연결하기`;
+  btn.disabled = false;
+  btn.dataset.mode = 'connect';
+  btn.dataset.order = order;
+  btn.classList.add('show');
+}
+
+/* ---------- 8b. BOND ANGLE (select 3 neighboring atoms) ---------- */
+function areAtomsBonded(idA, idB){
+  const a = molecule.atomsById[idA], b = molecule.atomsById[idB];
+  if(!a || !b) return false;
+  if(a.parent===idB || b.parent===idA) return true;
+  return !!findRingBondBetween(idA, idB);
+}
+
+// measures the ACTUAL angle at `vertexId` from the model's current (relaxed) 3D positions —
+// not a theoretical lookup, so it reflects whatever the real geometry in the scene is right now.
+function angleBetweenAtoms(vertexId, aId, bId){
+  const vertex = molecule.atomsById[vertexId];
+  const a = molecule.atomsById[aId], b = molecule.atomsById[bId];
+  if(!vertex || !a || !b) return null;
+  const v1 = new THREE.Vector3().subVectors(a.pos3D, vertex.pos3D).normalize();
+  const v2 = new THREE.Vector3().subVectors(b.pos3D, vertex.pos3D).normalize();
+  const cos = Math.max(-1, Math.min(1, v1.dot(v2)));
+  return Math.acos(cos) * 180/Math.PI;
+}
+
+// the idealized VSEPR angle this tool's own geometry model targets for that vertex — used only
+// as a reference to compare the measured angle against, not as what gets displayed by itself.
+function idealAngleForVertex(vertexId){
+  const node = molecule.atomsById[vertexId];
+  if(!node) return null;
+  const el = ELEMENTS[node.element];
+  const total = el.bonds + el.lone;
+  if(total===2) return { ideal:180, refined:false };
+  if(total===3) return { ideal:120, refined:false };
+  if(total===4){
+    if(COMPRESSED_ANGLE[el.lone]!==undefined) return { ideal:COMPRESSED_ANGLE[el.lone], refined:true };
+    return { ideal:109.5, refined:false };
+  }
+  return null;
+}
+
+// among 3 selected atoms, finds every atom that's bonded to BOTH of the other two — usually
+// exactly one (the vertex of the angle), but a 3-membered ring gives three valid angles at once.
+function findBondAngles(ids){
+  const results = [];
+  for(let i=0;i<3;i++){
+    const vertex = ids[i];
+    const others = ids.filter((_,idx)=>idx!==i);
+    if(areAtomsBonded(vertex, others[0]) && areAtomsBonded(vertex, others[1])){
+      const degrees = angleBetweenAtoms(vertex, others[0], others[1]);
+      if(degrees!==null) results.push({ vertex, a:others[0], b:others[1], degrees });
+    }
+  }
+  return results;
+}
+
+/* ---------- 8c. IN-SCENE ANGLE VISUAL — arc + label drawn right at the vertex atom ---------- */
+let angleVisualGroups = [];
+
+function clearAngleVisuals3D(){
+  angleVisualGroups.forEach(g=>{ moleculeGroup.remove(g); disposeObject3D(g); });
+  angleVisualGroups = [];
+}
+
+function makeAngleLabelSprite(text){
+  const canvas = document.createElement('canvas');
+  canvas.width = 200; canvas.height = 72;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(18,22,29,0.92)';
+  roundRectPath(ctx, 2,2,196,68,16);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#3f8577';
+  roundRectPath(ctx, 2,2,196,68,16);
+  ctx.stroke();
+  ctx.font = '700 34px IBM Plex Mono, monospace';
+  ctx.fillStyle = '#c8e3dc';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 100, 38);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false });
+  const spr = new THREE.Sprite(mat);
+  spr.scale.set(0.95, 0.34, 1);
+  return spr;
+}
+
+// draws the swept angle as a thin tube arcing from one bond direction to the other, at a fixed
+// radius from the vertex, with the degree value labeled at the arc's midpoint.
+function makeAngleArcGroup(vertexPos, dirA, dirB, radius, degrees, skipPopIn){
+  const group = new THREE.Group();
+  const dA = dirA.clone().normalize();
+  const dB = dirB.clone().normalize();
+  const cosT = Math.max(-1, Math.min(1, dA.dot(dB)));
+  const theta = Math.acos(cosT);
+  const color = 0x3f8577;
+  const text = degrees.toFixed(1) + '°';
+
+  if(theta > 0.025 && theta < Math.PI - 0.025){
+    const axis = new THREE.Vector3().crossVectors(dA, dB).normalize();
+    const segments = 28;
+    const points = [];
+    for(let i=0;i<=segments;i++){
+      const t = i/segments;
+      points.push(dA.clone().applyAxisAngle(axis, theta*t).multiplyScalar(radius));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+    const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.03, 8, false);
+    const tubeMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.92, depthTest:false });
+    group.add(new THREE.Mesh(tubeGeo, tubeMat));
+
+    const midDir = dA.clone().applyAxisAngle(axis, theta*0.5);
+    const label = makeAngleLabelSprite(text);
+    label.position.copy(midDir.multiplyScalar(radius*1.4));
+    group.add(label);
+  } else {
+    // ~0° or ~180° — no single great-circle arc is well-defined there, so just place the label
+    const perp = perpAxis(dA);
+    const label = makeAngleLabelSprite(text);
+    label.position.copy(perp.multiplyScalar(radius*1.1));
+    group.add(label);
+  }
+
+  group.position.copy(vertexPos);
+  moleculeGroup.add(group);
+  if(skipPopIn){
+    // already on screen and just tracking the geometry (e.g. mid-relaxation) — no re-animation,
+    // or it would flicker as this gets rebuilt every frame
+    group.scale.setScalar(1);
+  } else {
+    group.scale.setScalar(0.001);
+    animateValue(260, (e)=>{ group.scale.setScalar(e); }, null, easeOutBack);
+  }
+  return group;
+}
+
+function updateAngleVisuals3D(angles){
+  const alreadyShowing = angleVisualGroups.length > 0;
+  clearAngleVisuals3D();
+  angles.forEach(({vertex,a,b,degrees})=>{
+    const vNode = molecule.atomsById[vertex], aNode = molecule.atomsById[a], bNode = molecule.atomsById[b];
+    if(!vNode || !aNode || !bNode) return;
+    const dirA = new THREE.Vector3().subVectors(aNode.pos3D, vNode.pos3D);
+    const dirB = new THREE.Vector3().subVectors(bNode.pos3D, vNode.pos3D);
+    const radius = ELEMENTS[vNode.element].radius + 0.4;
+    angleVisualGroups.push(makeAngleArcGroup(vNode.pos3D, dirA, dirB, radius, degrees, alreadyShowing));
+  });
+}
+
+function updateAngleBadge(){
+  const badge = document.getElementById('angle-badge');
+  if(!badge) return;
+  if(selectedAtomIds.size!==3){ badge.classList.remove('show'); clearAngleVisuals3D(); return; }
+  const ids = Array.from(selectedAtomIds);
+  if(ids.some(id=>!molecule.atomsById[id])){ badge.classList.remove('show'); clearAngleVisuals3D(); return; }
+  const angles = findBondAngles(ids);
+
+  if(angles.length===0){
+    badge.innerHTML = `<div class="ab-main">이웃 관계가 아니에요</div><div class="ab-sub">가운데 원자가 나머지 두 원자와 모두 결합되어 있어야 결합각을 잴 수 있어요</div>`;
+    badge.classList.add('show');
+    clearAngleVisuals3D();
+    return;
+  }
+
+  badge.innerHTML = angles.map(({vertex,a,b,degrees})=>{
+    const vNode = molecule.atomsById[vertex], aNode = molecule.atomsById[a], bNode = molecule.atomsById[b];
+    return `<div class="ab-row">
+      <span class="ab-main">∠${ELEMENTS[aNode.element].symbol}-${ELEMENTS[vNode.element].symbol}-${ELEMENTS[bNode.element].symbol} ≈ ${degrees.toFixed(1)}°</span>
+    </div>`;
+  }).join('');
+  badge.classList.add('show');
+  updateAngleVisuals3D(angles);
+}
+
+// bond order is decided automatically (never asked of the user here): it's the most bonds
+// both atoms can still mutually support — the same rule real Lewis-structure building follows.
+function createRingBond(idA, idB, order){
+  const a = molecule.atomsById[idA], b = molecule.atomsById[idB];
+  if(!a || !b || idA===idB) return null;
+  if(a.parent===b.id || b.parent===a.id) return null;
+  if(findRingBondBetween(idA, idB)) return null;
+  const slotA = firstOpenSlot(a), slotB = firstOpenSlot(b);
+  if(slotA<0 || slotB<0) return null;
+  const maxOrder = autoBondOrderFor(a, b);
+  order = Math.max(1, Math.min(order || maxOrder, maxOrder));
+  const consumedA = findConsumableSlots(a, slotA, order);
+  const consumedB = findConsumableSlots(b, slotB, order);
+  if(!consumedA || !consumedB) return null;
+
+  const id = 'r'+(ringBondIdCounter++);
+  const rb = { id, a:idA, b:idB, order, consumedA, consumedB, mesh:null };
+  molecule.ringBonds[id] = rb;
+  consumedA.forEach(idx=>{ a.slots[idx]=id; });
+  consumedB.forEach(idx=>{ b.slots[idx]=id; });
+
+  [[a,consumedA],[b,consumedB]].forEach(([node,indices])=>{
+    indices.forEach(idx=>{
+      const m = node.slotMeshes[idx];
+      if(m){
+        animateValue(180,(e)=>{ m.scale.setScalar(1-e); }, ()=>{ moleculeGroup.remove(m); disposeObject3D(m); }, easeOutCubic);
+        node.slotMeshes[idx] = null;
+      }
+    });
+  });
+
+  const bondGroupData = makeBondMeshGroup(a.pos3D, b.pos3D, order);
+  moleculeGroup.add(bondGroupData.group);
+  rb.mesh = bondGroupData.group;
+  animateBondGroupGrowth(bondGroupData, 420);
+
+  actionHistory.push({ type:'ring', ringId:id });
+  rebuildDipoleLayer();
+  refreshAll();
+  scheduleRelax();
+  return rb;
+}
+
+// pure cleanup (meshes + slots + molecule.ringBonds) — callers decide what happens to actionHistory
+function cleanupRingBond(ringId){
+  const rb = molecule.ringBonds[ringId];
+  if(!rb) return;
+  if(rb.mesh){ moleculeGroup.remove(rb.mesh); disposeObject3D(rb.mesh); }
+  const a = molecule.atomsById[rb.a], b = molecule.atomsById[rb.b];
+  if(a) restoreSlotsOnParent(a, rb.consumedA);
+  if(b) restoreSlotsOnParent(b, rb.consumedB);
+  delete molecule.ringBonds[ringId];
+}
+function disconnectRingBond(ringId){
+  cleanupRingBond(ringId);
+  actionHistory = actionHistory.filter(e=> !(e.type==='ring' && e.ringId===ringId));
+  rebuildDipoleLayer();
+  refreshAll();
+  scheduleRelax();
+}
+
+function wireConnectAction(){
+  const btn = document.getElementById('connect-action');
+  if(!btn) return;
+  btn.addEventListener('click', ()=>{
+    if(btn.disabled || selectedAtomIds.size!==2) return;
+    const [idA, idB] = Array.from(selectedAtomIds);
+    if(btn.dataset.mode==='connect'){
+      const order = parseInt(btn.dataset.order, 10);
+      const a = molecule.atomsById[idA], b = molecule.atomsById[idB];
+      const rb = createRingBond(idA, idB, order);
+      if(rb && a && b){
+        const sym = order===3?'≡':order===2?'=':'—';
+        showToast(`${ELEMENTS[a.element].symbol}${sym}${ELEMENTS[b.element].symbol}(으)로 연결했어요`);
+      }
+    } else if(btn.dataset.mode==='disconnect'){
+      disconnectRingBond(btn.dataset.ringId);
+      showToast('결합을 끊었어요.');
+    }
+    clearSelection();
+  });
+}
+
+/* ---------- 9. 2D CHEMICAL-DIAGRAM LAYOUTS ---------- */
+const LEWIS_GRID = 1.48;
+const LEWIS_ELECTRON_COLOR = '#c75b55';
+const LEWIS_LABEL_COLOR = '#26384a';
+const STRUCT_BOND_LEN = 1.9;
+const CARDINAL_PORTS = [
+  { name:'east',  dx: 1, dy: 0, angle:0 },
+  { name:'north', dx: 0, dy: 1, angle:90 },
+  { name:'west',  dx:-1, dy: 0, angle:180 },
+  { name:'south', dx: 0, dy:-1, angle:270 }
+];
+const PORT_BY_NAME = Object.fromEntries(CARDINAL_PORTS.map(p=>[p.name,p]));
+const OPPOSITE_PORT = { east:'west', west:'east', north:'south', south:'north' };
+
+function dirFromAngle(deg){ const r=deg*Math.PI/180; return {x:Math.cos(r), y:Math.sin(r)}; }
+function normAngle(deg){ return ((deg%360)+360)%360; }
+
+function treeChildren(node){
+  const out = [], seen = new Set();
+  node.slots.forEach(id=>{
+    if(!id || seen.has(id) || !molecule.atomsById[id]) return;
+    seen.add(id);
+    out.push(molecule.atomsById[id]);
+  });
+  return out;
+}
+
+function portNameBetween(a,b){
+  const dx=b.x-a.x, dy=b.y-a.y;
+  return Math.abs(dx)>=Math.abs(dy) ? (dx>=0?'east':'west') : (dy>=0?'north':'south');
+}
+
+function rootLewisPorts(childCount, loneCount){
+  if(childCount<=1) return ['east'];
+  // Textbook Lewis layout for AX2E2 centres (H2O, H2S, OF2 ...): the two bonds
+  // occupy adjacent sides, leaving the other adjacent sides for the two lone pairs.
+  if(childCount===2 && loneCount>=2) return ['west','south'];
+  if(childCount===2) return ['west','east'];
+  if(childCount===3 && loneCount>0) return ['west','east','south'];
+  if(childCount===3) return ['west','east','south'];
+  return ['east','north','west','south'];
+}
+
+function branchLewisPorts(travelPort, childCount){
+  const sidePorts = {
+    east:['north','south'], west:['south','north'],
+    north:['west','east'], south:['east','west']
+  }[travelPort];
+  if(childCount===1) return [travelPort];
+  if(childCount===2) return sidePorts;
+  return [travelPort, ...sidePorts];
+}
+
+// A Lewis structure is a bookkeeping diagram, not a perspective drawing. Every tree bond is
+// therefore routed on a horizontal/vertical port, and lone pairs occupy the unused ports.
+function layoutLewis2D(){
+  const positions = {};
+  const usedPorts = {};
+  const occupied = new Set();
+  const key = (x,y)=>`${Math.round(x/LEWIS_GRID)},${Math.round(y/LEWIS_GRID)}`;
+
+  function reservePort(nodeId, name){
+    if(!usedPorts[nodeId]) usedPorts[nodeId] = new Set();
+    usedPorts[nodeId].add(name);
+  }
+
+  function place(node, gridX, gridY, travelPort, depth){
+    positions[node.id] = {x:gridX*LEWIS_GRID, y:gridY*LEWIS_GRID};
+    occupied.add(`${gridX},${gridY}`);
+    const children = treeChildren(node);
+    const loneCount = node.lonePairDirs.length;
+    let ports = depth===0
+      ? rootLewisPorts(children.length, loneCount)
+      : branchLewisPorts(travelPort, children.length);
+    const backPort = depth===0 ? null : OPPOSITE_PORT[travelPort];
+    ports = ports.filter(name=>name!==backPort);
+    CARDINAL_PORTS.forEach(p=>{ if(p.name!==backPort && !ports.includes(p.name)) ports.push(p.name); });
+
+    children.forEach((child,i)=>{
+      let portName = ports[i % ports.length];
+      let port = PORT_BY_NAME[portName];
+      let distance = 1;
+      while(distance<5 && occupied.has(`${gridX+port.dx*distance},${gridY+port.dy*distance}`)) distance++;
+      if(distance>=5){
+        const fallback = CARDINAL_PORTS.find(p=>p.name!==backPort && !occupied.has(`${gridX+p.dx},${gridY+p.dy}`));
+        if(fallback){ port=fallback; portName=fallback.name; distance=1; }
+      }
+      reservePort(node.id, portName);
+      reservePort(child.id, OPPOSITE_PORT[portName]);
+      place(child, gridX+port.dx*distance, gridY+port.dy*distance, portName, depth+1);
+    });
+  }
+
+  if(molecule.root) place(molecule.root,0,0,'east',0);
+
+  // Ring closures are not part of the tree walk, but their occupied ports still matter when
+  // deciding where lone-pair dots belong.
+  Object.values(molecule.ringBonds||{}).forEach(rb=>{
+    const a=positions[rb.a], b=positions[rb.b];
+    if(!a||!b) return;
+    const pa=portNameBetween(a,b), pb=portNameBetween(b,a);
+    reservePort(rb.a,pa); reservePort(rb.b,pb);
+  });
+
+  const lonePorts = {};
+  allAtoms().forEach(node=>{
+    const used = usedPorts[node.id] || new Set();
+    const count = node.lonePairDirs.length;
+    let available = CARDINAL_PORTS.map(p=>p.name).filter(name=>!used.has(name));
+    if(count===1 && used.size===1){
+      const onlyUsed = Array.from(used)[0];
+      const opposite = OPPOSITE_PORT[onlyUsed];
+      available = [opposite, ...available.filter(name=>name!==opposite)];
+    } else {
+      const preference = ['north','south','east','west'];
+      available.sort((a,b)=>preference.indexOf(a)-preference.indexOf(b));
+    }
+    lonePorts[node.id] = available.slice(0,count);
+  });
+  return {positions,lonePorts};
+}
+
+function idealStructuralAngle(node){
+  const neighborCount = getNeighborAtomIds(node).length;
+  const domains = neighborCount + node.lonePairDirs.length;
+  if(domains<=2) return 180;
+  if(domains===3) return 120;
+  if(domains===4 && node.lonePairDirs.length===2) return 104.5;
+  if(domains===4 && node.lonePairDirs.length===1) return 107;
+  return 109.5;
+}
+
+function rootStructuralAngles(node, count){
+  if(count<=1) return [0];
+  if(count===2){
+    const ideal=idealStructuralAngle(node);
+    return ideal>=175 ? [180,0] : [270-ideal/2,270+ideal/2];
+  }
+  if(count===3) return [270,30,150];
+  return [0,180,60,300];
+}
+
+function branchStructuralAngles(node, incomingAngle, count, depth){
+  const ideal=idealStructuralAngle(node);
+  if(count<=0) return [];
+  if(count===1){
+    if(ideal>=175) return [incomingAngle+180];
+    return [incomingAngle + (depth%2 ? ideal : -ideal)];
+  }
+  if(count===2) return [incomingAngle+ideal, incomingAngle-ideal];
+  return [incomingAngle+180,incomingAngle+90,incomingAngle-90];
+}
+
+// Structural formulae use deterministic conventional 2D angles. Tetrahedral centres receive
+// solid/hashed stereobonds; planar centres stay as ordinary lines.
+function layoutStructural2D(){
+  const positions={};
+  const bondStyles={};
+  const occupied=[];
+
+  function isOccupied(p){ return occupied.some(q=>Math.hypot(p.x-q.x,p.y-q.y)<0.7); }
+  function styleFor(node, childIndex, childCount){
+    const domains=getNeighborAtomIds(node).length + node.lonePairDirs.length;
+    if(domains!==4) return 'plain';
+    if(childCount===3 && childIndex===1) return 'wedge';
+    if(childCount===3 && childIndex===2) return 'hash';
+    if(childCount===4 && childIndex===2) return 'wedge';
+    if(childCount===4 && childIndex===3) return 'hash';
+    return 'plain';
+  }
+
+  function place(node,pos,incomingAngle,depth){
+    positions[node.id]=pos; occupied.push(pos);
+    const children=treeChildren(node);
+    let angles=depth===0 ? rootStructuralAngles(node,children.length)
+      : branchStructuralAngles(node,incomingAngle,children.length,depth);
+    children.forEach((child,i)=>{
+      let angle=normAngle(angles[i]===undefined ? incomingAngle+180 : angles[i]);
+      let d=dirFromAngle(angle), length=STRUCT_BOND_LEN;
+      let next={x:pos.x+d.x*length,y:pos.y+d.y*length};
+      let tries=0;
+      while(isOccupied(next) && tries<6){
+        angle=normAngle(angle+(tries%2===0?30:-60));
+        d=dirFromAngle(angle); length+=0.12;
+        next={x:pos.x+d.x*length,y:pos.y+d.y*length};
+        tries++;
+      }
+      bondStyles[`${node.id}|${child.id}`]=styleFor(node,i,children.length);
+      place(child,next,normAngle(angle+180),depth+1);
+    });
+  }
+
+  if(molecule.root) place(molecule.root,{x:0,y:0},180,0);
+  return {positions,bondStyles};
+}
+
+function svgBoundsFrom(positions, pad){
+  const xs = Object.values(positions).map(p=>p.x);
+  const ys = Object.values(positions).map(p=>p.y);
+  if(xs.length===0) return { minX:-2,minY:-2,w:4,h:4 };
+  const minX = Math.min(...xs)-pad, maxX = Math.max(...xs)+pad;
+  const minY = Math.min(...ys)-pad, maxY = Math.max(...ys)+pad;
+  return { minX, minY, w:maxX-minX, h:maxY-minY };
+}
+
+function elCssColor(sym){ return hexToCss(ELEMENTS[sym].color); }
+
+function renderLewisSVG(){
+  if(!molecule.root) return '';
+  const {positions,lonePorts}=layoutLewis2D();
+  const b=svgBoundsFrom(positions,1.4);
+  let s=`<svg viewBox="${b.minX} ${-(b.minY+b.h)} ${b.w} ${b.h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="루이스 전자점식">`;
+
+  // Single/double bonds use colon-shaped pairs perpendicular to the bond axis (H:O, A::B).
+  // Keep the existing triple-bond arrangement unchanged.
+  allBondEdges().forEach(({parent,child,order})=>{
+    const p1=positions[parent.id], p2=positions[child.id];
+    if(!p1||!p2) return;
+    const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
+    const bx=dx/len, by=dy/len, px=-by, py=bx;
+    const pairCenters=order===1
+      ? [{along:0,across:0}]
+      : order===2
+        ? [{along:-0.13,across:0},{along:0.13,across:0}]
+        : [{along:0,across:-0.2},{along:0,across:0},{along:0,across:0.2}];
+    pairCenters.forEach(({along,across})=>{
+      const cx=(p1.x+p2.x)/2 + bx*along + px*across;
+      const cy=(p1.y+p2.y)/2 + by*along + py*across;
+      const dotAxisX=order===3 ? bx : px;
+      const dotAxisY=order===3 ? by : py;
+      [-1,1].forEach(k=>{
+        const x=cx+dotAxisX*0.105*k, y=cy+dotAxisY*0.105*k;
+        s+=`<circle cx="${x}" cy="${-y}" r="0.055" fill="${LEWIS_ELECTRON_COLOR}"/>`;
+      });
+    });
+  });
+
+  // Lone pairs sit on the unused north/east/south/west ports around each atom.
+  allAtoms().forEach(node=>{
+    const p=positions[node.id];
+    (lonePorts[node.id]||[]).forEach(portName=>{
+      const port=PORT_BY_NAME[portName], d={x:port.dx,y:port.dy};
+      const bx=p.x+d.x*0.44, by=p.y+d.y*0.44;
+      const px=-d.y, py=d.x;
+      [-1,1].forEach(k=>{
+        const x=bx+px*0.1*k, y=by+py*0.1*k;
+        s+=`<circle cx="${x}" cy="${-y}" r="0.055" fill="${LEWIS_ELECTRON_COLOR}"/>`;
+      });
+    });
+  });
+
+  allAtoms().forEach(node=>{
+    const p=positions[node.id];
+    s+=`<text x="${p.x}" y="${-p.y}" font-family="Georgia, 'Times New Roman', serif" font-weight="400" font-size="0.48" fill="${LEWIS_LABEL_COLOR}" text-anchor="middle" dominant-baseline="central">${ELEMENTS[node.element].symbol}</text>`;
+  });
+
+  s+='</svg>';
+  return s;
+}
+
+function labelGap(symbol){ return symbol.length>1 ? 0.42 : 0.31; }
+function clippedBondEndpoints(p1,p2,sym1,sym2){
+  const dx=p2.x-p1.x,dy=p2.y-p1.y,len=Math.hypot(dx,dy)||1;
+  const ux=dx/len,uy=dy/len,g1=labelGap(sym1),g2=labelGap(sym2);
+  return {x1:p1.x+ux*g1,y1:p1.y+uy*g1,x2:p2.x-ux*g2,y2:p2.y-uy*g2,ux,uy};
+}
+
+function renderStructuralSVG(){
+  if(!molecule.root) return '';
+  const {positions,bondStyles}=layoutStructural2D();
+  const b=svgBoundsFrom(positions,0.9);
+  let s=`<svg viewBox="${b.minX} ${-(b.minY+b.h)} ${b.w} ${b.h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="분자의 구조식">`;
+
+  allBondEdges().forEach(({parent,child,order})=>{
+    const p1=positions[parent.id],p2=positions[child.id];
+    if(!p1||!p2) return;
+    const ends=clippedBondEndpoints(p1,p2,parent.element,child.element);
+    const px=-ends.uy,py=ends.ux;
+    const style=bondStyles[`${parent.id}|${child.id}`]||'plain';
+    if(order===1 && style==='wedge'){
+      const wide=0.18;
+      s+=`<polygon points="${ends.x1},${-ends.y1} ${ends.x2+px*wide},${-(ends.y2+py*wide)} ${ends.x2-px*wide},${-(ends.y2-py*wide)}" fill="#17191c"/>`;
+      return;
+    }
+    if(order===1 && style==='hash'){
+      for(let i=1;i<=6;i++){
+        const t=i/7,cx=ends.x1+(ends.x2-ends.x1)*t,cy=ends.y1+(ends.y2-ends.y1)*t;
+        const half=0.025+0.13*t;
+        s+=`<line x1="${cx-px*half}" y1="${-(cy-py*half)}" x2="${cx+px*half}" y2="${-(cy+py*half)}" stroke="#17191c" stroke-width="0.045" stroke-linecap="round"/>`;
+      }
+      return;
+    }
+    const offsets=order===1?[0]:order===2?[-0.085,0.085]:[-0.13,0,0.13];
+    offsets.forEach(off=>{
+      const x1=ends.x1+px*off,y1=ends.y1+py*off,x2=ends.x2+px*off,y2=ends.y2+py*off;
+      s+=`<line x1="${x1}" y1="${-y1}" x2="${x2}" y2="${-y2}" stroke="#17191c" stroke-width="0.06" stroke-linecap="square"/>`;
+    });
+  });
+  allAtoms().forEach(node=>{
+    const p=positions[node.id];
+    s+=`<text x="${p.x}" y="${-p.y}" font-family="Arial, Helvetica, sans-serif" font-weight="600" font-size="0.47" fill="#17191c" text-anchor="middle" dominant-baseline="central" paint-order="stroke" stroke="#fff" stroke-width="0.12">${ELEMENTS[node.element].symbol}</text>`;
+  });
+  s+='</svg>';
+  return s;
+}
+
+function textFormula(node){
+  const kids = [];
+  const seen = new Set();
+  node.slots.forEach(cid=>{
+    // skip ring-bond markers here — that neighbor isn't a tree child, it already appears
+    // elsewhere in this notation, and molecule.atomsById[cid] would be undefined for it.
+    if(cid && !seen.has(cid) && molecule.atomsById[cid]){ seen.add(cid); kids.push(molecule.atomsById[cid]); }
+  });
+  if(kids.length===0) return node.element;
+  const bondSym = (k)=> k.bondOrder===3 ? '≡' : (k.bondOrder===2 ? '=' : '-');
+  if(kids.length===1) return node.element + bondSym(kids[0]) + textFormula(kids[0]);
+  return node.element + '(' + kids.map(k=> bondSym(k)+textFormula(k)).join('') + ')';
+}
+
+/* ---------- 10. UI PANEL RENDERING ---------- */
+function renderReferenceGrid(){
+  return ELEMENT_ORDER.map(sym=>{
+    const el = ELEMENTS[sym];
+    const css = hexToCss(el.color);
+    return `<div class="ref-chip">
+      <div class="sw" style="background:${css}"></div>
+      <div class="sym">${el.symbol}</div>
+      <div class="en">${enLabel(sym)}</div>
+    </div>`;
+  }).join('');
+}
+
+function getNeighborAtomIds(node){
+  const ids = [];
+  const seen = new Set();
+  if(node.parent && !seen.has(node.parent)){ seen.add(node.parent); ids.push(node.parent); }
+  node.slots.forEach(s=>{
+    if(!s || seen.has(s)) return;
+    if(molecule.atomsById[s]){ seen.add(s); ids.push(s); }
+    else if(molecule.ringBonds[s]){
+      const rb = molecule.ringBonds[s];
+      const otherId = rb.a===node.id ? rb.b : rb.a;
+      if(otherId && !seen.has(otherId)){ seen.add(otherId); ids.push(otherId); }
+    }
+  });
+  return ids;
+}
+
+function renderPropertiesPanel(){
+  const panel = document.getElementById('panel-properties');
+
+  if(selectedAtomIds.size===0){
+    panel.innerHTML = `
+      <div class="panel-eyebrow">ATOM PROPERTIES</div>
+      <div class="panel-title">원자 속성</div>
+      <div class="panel-empty">3D 화면에서 원자를 클릭하면 이곳에 원자번호·전기음성도·원자가전자·역할이 표시됩니다. <span class="hk">Shift</span>+클릭으로 여러 원자를 선택할 수 있어요.</div>
+      <div class="panel-eyebrow" style="margin-top:4px;">전기음성도 참고표 (폴링 척도, 반올림)</div>
+      <div id="ref-table" style="margin-top:8px;">${renderReferenceGrid()}</div>
+    `;
+    return;
+  }
+
+  if(selectedAtomIds.size>1){
+    const nodes = Array.from(selectedAtomIds).map(id=>molecule.atomsById[id]).filter(Boolean);
+    panel.innerHTML = `
+      <div class="panel-eyebrow">ATOM PROPERTIES</div>
+      <div class="panel-title">원자 ${nodes.length}개 선택됨</div>
+      <div class="panel-empty">${nodes.length===2
+        ? '화면 위쪽의 연결 버튼으로 이 두 원자를 직접 이어 결합을 만들 수 있어요. 몇 중 결합인지는 남은 결합 자리를 보고 자동으로 정해져요.'
+        : nodes.length===3
+          ? '가운데 원자가 나머지 두 원자와 모두 결합돼 있으면, 화면 위쪽에 결합각이 자동으로 표시돼요.'
+          : 'Backspace를 누르면 선택한 원자들이 한 번에 삭제돼요.'}</div>
+      <div id="ref-table" style="margin-top:8px;">
+        ${nodes.map(n=>{
+          const el=ELEMENTS[n.element]; const css=hexToCss(el.color);
+          return `<div class="ref-chip"><div class="sw" style="background:${css}"></div><div class="sym">${el.symbol}</div><div class="en">${enLabel(n.element)}</div></div>`;
+        }).join('')}
+      </div>
+    `;
+    return;
+  }
+
+  const selectedAtomId = Array.from(selectedAtomIds)[0];
+  const node = molecule.atomsById[selectedAtomId];
+  if(!node){ clearSelection(); return; }
+  const el = ELEMENTS[node.element];
+  const css = hexToCss(el.color);
+  const isRoot = !node.parent;
+  const totalDomains = el.bonds+el.lone;
+
+  let neighborsHtml = '';
+  const neighborIds = getNeighborAtomIds(node);
+  if(neighborIds.length>0){
+    neighborsHtml = `<div class="prop-neighbors"><div class="panel-eyebrow" style="margin-bottom:6px;">결합한 이웃 원자</div>` +
+      neighborIds.map(id=>{
+        const nb = molecule.atomsById[id];
+        const diff = Math.abs(ELEMENTS[nb.element].en - el.en);
+        return `<div class="pn-row"><span>${ELEMENTS[nb.element].symbol} (${ELEMENTS[nb.element].name})</span><b>ΔEN ${diff.toFixed(1)}</b></div>`;
+      }).join('') + `</div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="panel-eyebrow">ATOM PROPERTIES</div>
+    <div class="panel-title">원자 속성</div>
+    <div class="prop-card">
+      <div class="prop-head">
+        <div class="prop-sw" style="background:${css}"></div>
+        <div>
+          <div class="prop-name">${el.name} (${el.symbol})</div>
+          <div class="prop-role">${el.inert ? 'NOBLE GAS · 비활성 기체 (결합 없음)' : (isRoot? 'CENTRAL ATOM · 중심 원자' : 'TERMINAL/BRANCH · 결합 원자')}</div>
+        </div>
+      </div>
+      <div class="prop-grid">
+        <div class="pg-item"><div class="pg-k">원자 번호</div><div class="pg-v">${el.number}</div></div>
+        <div class="pg-item"><div class="pg-k">전기음성도</div><div class="pg-v">${enLabel(node.element)}</div></div>
+        <div class="pg-item"><div class="pg-k">원자가 전자</div><div class="pg-v">${el.valence}</div></div>
+        <div class="pg-item"><div class="pg-k">공유 결합 수</div><div class="pg-v">${el.bonds}</div></div>
+        <div class="pg-item"><div class="pg-k">비공유 전자쌍</div><div class="pg-v">${el.lone}</div></div>
+        <div class="pg-item"><div class="pg-k">전자 도메인</div><div class="pg-v">${totalDomains}</div></div>
+      </div>
+      ${neighborsHtml}
+    </div>
+  `;
+}
+
+const POLARITY_CLASS_THRESH = 0.5;
+const IONIC_CLASS_THRESH = 1.7;
+function bondTagInfo(diff){
+  if(diff >= IONIC_CLASS_THRESH) return { cls:'tag-ionic', label:'이온 결합 성격↑' };
+  if(diff >= POLARITY_CLASS_THRESH) return { cls:'tag-polar', label:'극성 결합' };
+  return { cls:'tag-nonpolar', label:'무극성에 가까움' };
+}
+function renderDipolePanel(){
+  const panel = document.getElementById('panel-dipole');
+  const bonds = allBondEdges();
+  if(bonds.length===0){
+    panel.innerHTML = `
+      <div class="panel-eyebrow">POLARITY</div>
+      <div class="panel-title">쌍극자 모멘트 · 극성</div>
+      <div class="panel-empty">결합이 생기면 각 결합의 전기음성도 차이(ΔEN)와 분자 전체의 극성을 계산해서 보여드려요.</div>
+    `;
+    return;
+  }
+  const rows = bonds.map(({parent,child,order,isRing})=>{
+    const enA = ELEMENTS[parent.element].en, enB = ELEMENTS[child.element].en;
+    const diff = Math.abs(enA-enB);
+    const tag = bondTagInfo(diff);
+    const sym = order===3?'≡':order===2?'=':'—';
+    return `<div class="bond-row">
+      <span class="br-pair">${ELEMENTS[parent.element].symbol}${sym}${ELEMENTS[child.element].symbol}${isRing?' <i class="ring-tag" title="선택한 두 원자를 직접 연결한 결합">고리</i>':''}</span>
+      <span>ΔEN ${diff.toFixed(1)}</span>
+      <span class="br-tag ${tag.cls}">${tag.label}</span>
+    </div>`;
+  }).join('');
+
+  const net = computeNetDipole();
+  const mag = net.length();
+  const isPolar = mag > 0.12;
+  const formula = computeMolecularFormula();
+
+  panel.innerHTML = `
+    <div class="panel-eyebrow">POLARITY</div>
+    <div class="panel-title">쌍극자 모멘트 · 극성</div>
+    <div class="panel-eyebrow" style="margin-bottom:8px;">결합별 전기음성도 차이 (ΔEN)</div>
+    ${rows}
+    <div class="conclusion-card ${isPolar?'polar':'nonpolar'}">
+      <span class="cc-tag">${isPolar? 'POLAR MOLECULE':'NONPOLAR MOLECULE'}</span>
+      <p><b>${formula||''}</b>는 <b>${isPolar? '극성 분자':'무극성 분자'}</b>입니다.
+      ${isPolar
+        ? '개별 결합의 쌍극자가 비대칭 구조 때문에 완전히 상쇄되지 않아, 분자 전체에 알짜 쌍극자 모멘트가 남습니다.'
+        : '개별 결합은 극성을 띠더라도, 대칭적인 구조 덕분에 쌍극자 벡터들이 서로 상쇄되어 알짜 쌍극자 모멘트가 거의 0이 됩니다.'}
+      </p>
+    </div>
+    <div style="margin-top:14px;">
+      <div class="legend-row"><span class="legend-swatch" style="background:#a83f56;"></span>개별 결합 쌍극자 (⊢→ 이 더 전기음성도가 큰 원자를 향함, + 는 부분양전하 δ+)</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#6d4fa0;"></span>분자 전체의 알짜 쌍극자 모멘트</div>
+    </div>
+  `;
+}
+
+function renderLewisPanel(){
+  const panel = document.getElementById('panel-lewis');
+  if(!molecule.root){
+    panel.innerHTML = `<div class="panel-eyebrow">LEWIS STRUCTURE</div><div class="panel-title">루이스 전자점식</div>
+    <div class="panel-empty">분자를 만들면 모든 원자가 전자(결합쌍·비공유쌍)를 점으로 표시한 전자점식이 자동으로 그려져요.</div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <div class="panel-eyebrow">LEWIS STRUCTURE</div>
+    <div class="panel-title">루이스 전자점식</div>
+    <div class="struct-svg-wrap">${renderLewisSVG()}</div>
+    <div class="struct-caption">붉은 점 = 원자가 전자</div>
+  `;
+}
+
+function renderStructuralPanel(){
+  const panel = document.getElementById('panel-structural');
+  if(!molecule.root){
+    panel.innerHTML = `<div class="panel-eyebrow">STRUCTURAL FORMULA</div><div class="panel-title">구조식</div>
+    <div class="panel-empty">분자를 만들면 결합을 선으로 나타낸 구조식과 문자 표기가 함께 표시돼요.</div>`;
+    return;
+  }
+  const ringList = Object.values(molecule.ringBonds);
+  const ringNote = ringList.length>0
+    ? `<div class="panel-empty" style="margin-top:8px;">문자 표기는 가지 구조만 나타내요. 두 원자를 직접 이은 고리 결합은 위 그림에 표시돼요: ${
+        ringList.map(rb=>{
+          const a=molecule.atomsById[rb.a], b=molecule.atomsById[rb.b];
+          if(!a||!b) return '';
+          const sym = rb.order===3?'≡':rb.order===2?'=':'—';
+          return `${ELEMENTS[a.element].symbol}${sym}${ELEMENTS[b.element].symbol}`;
+        }).filter(Boolean).join(', ')
+      }</div>`
+    : '';
+  panel.innerHTML = `
+    <div class="panel-eyebrow">STRUCTURAL FORMULA</div>
+    <div class="panel-title">구조식</div>
+    <div class="struct-svg-wrap">${renderStructuralSVG()}</div>
+    <div class="struct-caption">평행선은 다중 결합, 쐐기·점선 쐐기는 입체 방향을 뜻해요.</div>
+    <div class="panel-eyebrow" style="margin-top:14px;">문자 표기</div>
+    <div class="text-formula">${textFormula(molecule.root)}</div>
+    ${ringNote}
+    <div class="panel-eyebrow" style="margin-top:${ringList.length>0?'0':'14px'};">분자식</div>
+    <div class="text-formula">${computeMolecularFormula()||'—'}</div>
+  `;
+}
+
+function refreshFormulaBadge(){
+  const formula = computeMolecularFormula();
+  document.getElementById('formula-text').innerHTML = formula || '—';
+  const openCount = countOpenSlots();
+  const statusEl = document.getElementById('formula-status');
+  if(molecule.root && openCount>0){
+    statusEl.textContent = `⚠ 열린 결합 자리 ${openCount}개 남음`;
+    statusEl.classList.add('show');
+  } else {
+    statusEl.classList.remove('show');
+  }
+}
+
+function refreshAll(){
+  refreshFormulaBadge();
+  renderPropertiesPanel();
+  renderLewisPanel();
+  renderStructuralPanel();
+  renderDipolePanel();
+  updateConnectAction(); updateAngleBadge();
+  document.getElementById('empty-state').style.display = molecule.root ? 'none' : 'flex';
+  document.getElementById('btn-undo').disabled = actionHistory.length===0;
+}
+
+/* ---------- 10b. PERIODIC-TABLE GRID (shared by both element pickers) ---------- */
+function renderPeriodicTableGrid(symbols){
+  let html = `<div class="ptable-grid">`;
+  html += `<div class="pt-dblock" title="전이 금속(3~12족)은 이 모형의 단순 옥텟 결합 규칙으로는 표현하지 않아요">전이 금속<span>이 모형에서는 지원 안 함</span></div>`;
+  symbols.forEach(sym=>{
+    const el = ELEMENTS[sym];
+    const css = hexToCss(el.color);
+    html += `<button class="pt-cell" style="--swatch:${css}; grid-column:${el.group}; grid-row:${el.period};" data-el="${sym}" title="${el.name} (${el.symbol}) · ${enLabel(sym, true)}">
+      <span class="pt-z">${el.number}</span>
+      <span class="pt-sym">${el.symbol}</span>
+    </button>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+/* ---------- 11. ELEMENT ATTACH POPUP (small, anchored near the click) ---------- */
+let pickerCallback = null;
+let pickerOrder = 1;
+let pickerMaxOrder = 1;
+const ATTACHABLE_ELEMENTS = ELEMENT_ORDER.filter(s=> ELEMENTS[s].bonds > 0);
+const ORDER_LABELS = { 1:['단일','−'], 2:['이중','='], 3:['삼중','≡'] };
+
+function ensurePickerDom(){
+  if(document.getElementById('picker-backdrop')) return;
+  const backdrop = document.createElement('div');
+  backdrop.id = 'picker-backdrop';
+  backdrop.innerHTML = `
+    <div id="picker-modal">
+      <div id="picker-head">
+        <span class="p-eyebrow">결합할 원소</span>
+        <span id="picker-context"></span>
+      </div>
+      <div id="order-select">
+        <button class="order-btn" data-order="1">단일 <i>${ORDER_LABELS[1][1]}</i></button>
+        <button class="order-btn" data-order="2">이중 <i>${ORDER_LABELS[2][1]}</i></button>
+        <button class="order-btn" data-order="3">삼중 <i>${ORDER_LABELS[3][1]}</i></button>
+      </div>
+      <div id="element-grid"></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  document.getElementById('element-grid').innerHTML = renderPeriodicTableGrid(ATTACHABLE_ELEMENTS);
+  document.getElementById('element-grid').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pt-cell');
+    if(!btn || btn.disabled) return;
+    const sym = btn.dataset.el;
+    const cb = pickerCallback;   // capture BEFORE closing — closePicker() clears pickerCallback
+    const order = pickerOrder;
+    closePicker();
+    if(cb) cb(sym, order);
+  });
+  document.getElementById('order-select').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.order-btn');
+    if(!btn || btn.disabled) return;
+    pickerOrder = parseInt(btn.dataset.order, 10);
+    updatePickerOrderUI();
+  });
+  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) closePicker(); });
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closePicker(); });
+}
+
+function updatePickerOrderUI(){
+  document.querySelectorAll('.order-btn').forEach(b=>{
+    const order = parseInt(b.dataset.order, 10);
+    b.classList.toggle('active', order===pickerOrder);
+    b.disabled = order>pickerMaxOrder;
+  });
+  document.querySelectorAll('#element-grid .pt-cell').forEach(b=>{
+    const ok = ELEMENTS[b.dataset.el].bonds >= pickerOrder;
+    b.disabled = !ok;
+    b.classList.toggle('disabled', !ok);
+  });
+}
+
+function positionPopupNear(el, x, y){
+  const margin = 12;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if(x===undefined || y===undefined){ x = vw/2; y = vh/2; }
+  const w = el.offsetWidth || 260, h = el.offsetHeight || 220;
+  let left = x + 16;
+  let top = y - h/2;
+  if(left + w + margin > vw) left = x - w - 16;
+  if(left < margin) left = margin;
+  top = Math.max(margin, Math.min(top, vh - h - margin));
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
+
+function openPicker(contextLabel, maxOrder, cb, anchorX, anchorY){
+  ensurePickerDom();
+  document.getElementById('picker-context').textContent = contextLabel;
+  pickerCallback = cb;
+  pickerMaxOrder = maxOrder;
+  pickerOrder = 1;
+  document.getElementById('order-select').style.display = maxOrder>1 ? 'flex' : 'none';
+  updatePickerOrderUI();
+  const backdrop = document.getElementById('picker-backdrop');
+  backdrop.classList.add('show');
+  positionPopupNear(document.getElementById('picker-modal'), anchorX, anchorY);
+}
+function closePicker(){
+  const bd = document.getElementById('picker-backdrop');
+  if(bd) bd.classList.remove('show');
+  pickerCallback = null;
+}
+function openSlotPicker(parentId, slotIndex, clientX, clientY){
+  const parent = molecule.atomsById[parentId];
+  if(!parent) return;
+  const maxOrder = maxAvailableOrderAt(parent);
+  const base = `${ELEMENTS[parent.element].name}(${parent.element})에 연결됩니다`;
+  const ctxLabel = maxOrder>1 ? base + ' · 결합 종류도 골라보세요' : base;
+  openPicker(ctxLabel, maxOrder, (sym, order)=>{
+    addAtom(parent, slotIndex, sym, order);
+  }, clientX, clientY);
+}
+
+/* ---------- 12. EMPTY-STATE ELEMENT GRID (choose central atom) ---------- */
+function wireEmptyStateGrid(){
+  const el = document.getElementById('element-grid-empty');
+  el.innerHTML = renderPeriodicTableGrid(ELEMENT_ORDER);
+  el.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pt-cell');
+    if(!btn || btn.disabled) return;
+    setRootAtom(btn.dataset.el);
+  });
+}
+
+/* ---------- 13. DOCK / TABS / TOGGLES / PRESETS / HELP ---------- */
+function setActiveTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.id==='panel-'+name));
+}
+
+function showToast(msg, duration){
+  const hint = document.getElementById('drag-hint');
+  hint.textContent = msg;
+  hint.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=> hint.classList.remove('show'), duration || 2800);
+}
+function showDragHintOnce(){
+  showToast('드래그: 회전 · 스크롤: 확대/축소 · 빈 자리 클릭: 원자 추가', 3600);
+}
+
+// replays a flat {el, parent, order?} step list (used by both presets and loaded .molecule files)
+// replays a flat {el, parent, order?} step list, then an optional {a, b, order} ring list —
+// used by both presets and loaded .molecule files.
+function loadStepsSequence(steps, staggerMs, rings){
+  resetMolecule();
+  const created = [];
+  const delay = staggerMs===undefined ? 260 : staggerMs;
+  let i = 0;
+  function step(){
+    if(i>=steps.length){
+      if(rings && rings.length) setTimeout(()=> replayRing(0), delay);
+      return;
+    }
+    const s = steps[i];
+    if(s.parent===null || s.parent===undefined){
+      setRootAtom(s.el);
+      created.push(molecule.root);
+    } else {
+      const parentNode = created[s.parent];
+      if(parentNode){
+        const slot = firstOpenSlot(parentNode);
+        const child = addAtom(parentNode, slot, s.el, s.order || 1);
+        created.push(child);
+      } else {
+        created.push(null);
+      }
+    }
+    i++;
+    setTimeout(step, delay);
+  }
+  function replayRing(j){
+    if(!rings || j>=rings.length) return;
+    const r = rings[j];
+    const a = created[r.a], b = created[r.b];
+    if(a && b) createRingBond(a.id, b.id, r.order || 1);
+    setTimeout(()=> replayRing(j+1), Math.max(delay, 180));
+  }
+  step();
+}
+
+function loadPreset(key){
+  const preset = findPresetByKey(key);
+  if(!preset) return;
+  loadStepsSequence(preset.steps, 260, preset.rings);
+}
+
+/* ---------- SAVE / LOAD .molecule FILES ---------- */
+function serializeMolecule(){
+  const idToIndex = {};
+  const steps = [];
+  const rings = [];
+  actionHistory.forEach(a=>{
+    if(a.type==='ring'){
+      const rb = molecule.ringBonds[a.ringId];
+      if(rb && idToIndex[rb.a]!==undefined && idToIndex[rb.b]!==undefined){
+        rings.push({ a: idToIndex[rb.a], b: idToIndex[rb.b], order: rb.order });
+      }
+      return;
+    }
+    const node = molecule.atomsById[a.childId];
+    if(!node) return;
+    idToIndex[a.childId] = steps.length;
+    const step = { el: node.element, parent: (a.parentId===null ? null : idToIndex[a.parentId]) };
+    if(node.bondOrder && node.bondOrder>1) step.order = node.bondOrder;
+    steps.push(step);
+  });
+  return { type:'molecule-lab-file', version:1, formula: computeMolecularFormulaPlain()||'', steps, rings };
+}
+
+function saveMoleculeToFile(){
+  if(!molecule.root){ showToast('먼저 분자를 만들어야 저장할 수 있어요.'); return; }
+  const data = serializeMolecule();
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (computeMolecularFormulaPlain() || 'molecule') + '.molecule';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  showToast('.molecule 파일로 저장했어요.');
+}
+
+function loadMoleculeFromFileData(data){
+  if(!data || !Array.isArray(data.steps) || data.steps.length===0) throw new Error('empty steps');
+  const valid = data.steps.every(s => s && typeof s.el==='string' && ELEMENTS[s.el] &&
+    (s.parent===null || s.parent===undefined || typeof s.parent==='number'));
+  if(!valid) throw new Error('invalid steps');
+  const rings = Array.isArray(data.rings) ? data.rings.filter(r=> r && typeof r.a==='number' && typeof r.b==='number') : [];
+  loadStepsSequence(data.steps, 90, rings);
+}
+
+
+function wireSaveLoad(){
+  const saveBtn = document.getElementById('btn-save');
+  const loadBtn = document.getElementById('btn-load');
+  const fileInput = document.getElementById('file-load-input');
+  if(!saveBtn || !loadBtn || !fileInput) return;
+  saveBtn.addEventListener('click', saveMoleculeToFile);
+  loadBtn.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    fileInput.value = '';
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        const data = JSON.parse(ev.target.result);
+        loadMoleculeFromFileData(data);
+      } catch(err){
+        console.error('파일을 불러오는 중 오류:', err);
+        showToast('올바른 .molecule 파일이 아니에요.');
+      }
+    };
+    reader.onerror = ()=> showToast('파일을 읽지 못했어요.');
+    reader.readAsText(file);
+  });
+}
+
+function wireDock(){
+  document.getElementById('btn-reset').addEventListener('click', resetMolecule);
+  document.getElementById('btn-undo').addEventListener('click', undoLast);
+
+  const presetBtn = document.getElementById('btn-preset');
+  const presetPop = document.getElementById('preset-pop');
+  presetPop.innerHTML = PRESET_CATEGORIES.map(cat=>{
+    const items = cat.items.map(it=>
+      `<div class="preset-item" data-preset="${it.key}"><span class="pf">${formulaFromSteps(it.steps)}</span><span>${it.name}</span></div>`
+    ).join('');
+    return `<div class="preset-cat-label">${cat.label}</div>${items}`;
+  }).join('');
+  presetBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    presetPop.classList.toggle('show');
+    document.getElementById('help-pop').classList.remove('show');
+  });
+  presetPop.addEventListener('click', (e)=>{
+    const item = e.target.closest('.preset-item');
+    if(!item) return;
+    loadPreset(item.dataset.preset);
+    presetPop.classList.remove('show');
+  });
+
+  const helpBtn = document.getElementById('help-btn');
+  const helpPop = document.getElementById('help-pop');
+  helpBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    helpPop.classList.toggle('show');
+    presetPop.classList.remove('show');
+  });
+
+  document.addEventListener('click', ()=>{
+    presetPop.classList.remove('show');
+    helpPop.classList.remove('show');
+  });
+
+  const loneToggle = document.getElementById('toggle-lone');
+  loneToggle.classList.add('on');
+  loneToggle.addEventListener('click', ()=>{
+    showLonePairs = !showLonePairs;
+    loneToggle.classList.toggle('on', showLonePairs);
+    allAtoms().forEach(n=> n.lonePairMeshes.forEach(m=> m.visible = showLonePairs));
+  });
+
+  const dipoleToggle = document.getElementById('toggle-dipole');
+  dipoleToggle.addEventListener('click', ()=>{
+    showDipole = !showDipole;
+    dipoleToggle.classList.toggle('on', showDipole);
+    rebuildDipoleLayer();
+  });
+
+  const spinToggle = document.getElementById('toggle-spin');
+  spinToggle.addEventListener('click', ()=>{
+    autoSpin = !autoSpin;
+    spinToggle.classList.toggle('on', autoSpin);
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> setActiveTab(btn.dataset.tab));
+  });
+}
+
+function wireKeyboardDelete(){
+  document.addEventListener('keydown', (e)=>{
+    if(e.key!=='Backspace' && e.key!=='Delete') return;
+    if(selectedAtomIds.size===0) return;
+    const pickerOpen = document.getElementById('picker-backdrop')?.classList.contains('show');
+    if(pickerOpen) return;
+    e.preventDefault(); // stop the browser's back-navigation reflex
+    Array.from(selectedAtomIds).forEach(id=>{ if(molecule.atomsById[id]) deleteAtomCascade(id); });
+  });
+}
+
+/* ---------- 14. INIT ---------- */
+function init(){
+  if(typeof THREE === 'undefined'){
+    document.getElementById('viewport-wrap').innerHTML =
+      '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;">' +
+      '<div style="max-width:380px;color:#eef1ea;font-size:13px;line-height:1.7;text-align:center;">' +
+      '<b style="display:block;font-size:15px;margin-bottom:8px;">3D 라이브러리를 불러오지 못했습니다</b>' +
+      '네트워크 연결을 확인한 뒤 페이지를 새로고침해 주세요. (three.js CDN 로드 실패)' +
+      '</div></div>';
+    return;
+  }
+  try{
+    wireEmptyStateGrid();
+    wireDock();
+    wireKeyboardDelete();
+    wireSaveLoad();
+    wireConnectAction();
+    initScene();
+    refreshAll();
+  } catch(err){
+    console.error('초기화 오류:', err);
+  }
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+</script>
+</body>
+</html>
