@@ -1260,41 +1260,91 @@ function moleculeCentroid(){
   return c;
 }
 
-function computeMolecularFormula(){
+const FORMULA_METALS = new Set([
+  'Li','Be','Na','Mg','Al','K','Ca','Ga','Rb','Sr','In','Sn','Cs','Ba','Tl','Pb','Bi','Po'
+]);
+
+function formulaCountsFromSymbols(symbols){
   const counts={};
-  allAtoms().forEach(n=>{ counts[n.element]=(counts[n.element]||0)+1; });
-  const symbols = Object.keys(counts);
-  if(symbols.length===0) return null;
-  let order;
-  if(counts['C']){
-    order = ['C','H', ...symbols.filter(s=>s!=='C'&&s!=='H').sort()];
-  } else {
-    order = symbols.slice().sort();
+  symbols.forEach(symbol=>{ counts[symbol]=(counts[symbol]||0)+1; });
+  return counts;
+}
+
+function compareFormulaElectropositive(a,b){
+  const enA=ELEMENTS[a]?.en, enB=ELEMENTS[b]?.en;
+  const valueA=enA===null||enA===undefined ? Number.POSITIVE_INFINITY : enA;
+  const valueB=enB===null||enB===undefined ? Number.POSITIVE_INFINITY : enB;
+  if(Math.abs(valueA-valueB)>1e-9) return valueA-valueB;
+  return (ELEMENTS[a]?.number||999)-(ELEMENTS[b]?.number||999);
+}
+
+// Molecular formulae do not use one universal alphabetical order. This follows the familiar
+// textbook conventions used by the molecules supported here: carbon compounds use C/H first,
+// ionic compounds put the metal/cation first, and binary covalent compounds put the more
+// electropositive element first. Hydrogen has conventional exceptions (H2O/HCl vs NH3/SiH4).
+function conventionalFormulaOrder(counts,rootSymbol){
+  const symbols=Object.keys(counts);
+  if(symbols.length===0) return [];
+
+  // Hydrogen cyanide is conventionally HCN rather than the index-oriented Hill form CHN.
+  if(symbols.length===3&&counts.H===1&&counts.C===1&&counts.N===1) return ['H','C','N'];
+
+  if(counts.C){
+    return ['C','H',...symbols.filter(s=>s!=='C'&&s!=='H').sort()]
+      .filter(symbol=>counts[symbol]);
   }
-  return order.filter(s=>counts[s]).map(s=> s + (counts[s]>1 ? ('<sub>'+counts[s]+'</sub>') : '')).join('');
+
+  const metals=symbols.filter(symbol=>FORMULA_METALS.has(symbol)).sort(compareFormulaElectropositive);
+  if(metals.length){
+    const remainder=symbols.filter(symbol=>!FORMULA_METALS.has(symbol));
+    // Keep H after the anionic/central nonmetal when both occur (for example NaOH).
+    const hydrogenTail=remainder.includes('H')?['H']:[];
+    return [...metals,...remainder.filter(s=>s!=='H').sort(compareFormulaElectropositive),...hydrogenTail];
+  }
+
+  if(counts.H){
+    const others=symbols.filter(symbol=>symbol!=='H');
+    if(others.length===1){
+      const other=others[0];
+      const group=ELEMENTS[other]?.group;
+      // Group 13–15 covalent hydrides are written BH3, SiH4, NH3, PH3, ...;
+      // group 16–17 hydrogen compounds are written H2O, H2S, HF, HCl, ....
+      return group>=13&&group<=15 ? [other,'H'] : ['H',other];
+    }
+    const ordered=['H'];
+    if(rootSymbol&&rootSymbol!=='H'&&counts[rootSymbol]) ordered.push(rootSymbol);
+    ordered.push(...others.filter(symbol=>symbol!==rootSymbol).sort(compareFormulaElectropositive));
+    return ordered;
+  }
+
+  return symbols.slice().sort(compareFormulaElectropositive);
+}
+
+function renderFormulaCounts(counts,rootSymbol,html){
+  const order=conventionalFormulaOrder(counts,rootSymbol);
+  if(order.length===0) return null;
+  return order.map(symbol=>{
+    const count=counts[symbol];
+    if(count<=1) return symbol;
+    return symbol+(html?`<sub>${count}</sub>`:count);
+  }).join('');
+}
+
+function computeMolecularFormula(){
+  const counts=formulaCountsFromSymbols(allAtoms().map(node=>node.element));
+  return renderFormulaCounts(counts,molecule.root?.element||null,true);
 }
 
 function computeMolecularFormulaPlain(){
-  const counts={};
-  allAtoms().forEach(n=>{ counts[n.element]=(counts[n.element]||0)+1; });
-  const symbols = Object.keys(counts);
-  if(symbols.length===0) return null;
-  let order;
-  if(counts['C']) order = ['C','H', ...symbols.filter(s=>s!=='C'&&s!=='H').sort()];
-  else order = symbols.slice().sort();
-  return order.filter(s=>counts[s]).map(s=> s + (counts[s]>1 ? counts[s] : '')).join('');
+  const counts=formulaCountsFromSymbols(allAtoms().map(node=>node.element));
+  return renderFormulaCounts(counts,molecule.root?.element||null,false);
 }
 
-// same counting logic, but works on a raw `steps` array (used to label presets before they're built)
+// Same logic for the raw step list used to label presets before they are built.
 function formulaFromSteps(steps){
-  const counts={};
-  steps.forEach(s=> counts[s.el]=(counts[s.el]||0)+1);
-  const symbols = Object.keys(counts);
-  if(symbols.length===0) return '';
-  let order;
-  if(counts['C']) order = ['C','H', ...symbols.filter(s=>s!=='C'&&s!=='H').sort()];
-  else order = symbols.slice().sort();
-  return order.filter(s=>counts[s]).map(s=> s + (counts[s]>1 ? ('<sub>'+counts[s]+'</sub>') : '')).join('');
+  const counts=formulaCountsFromSymbols(steps.map(step=>step.el));
+  const root=steps.find(step=>step.parent===null||step.parent===undefined);
+  return renderFormulaCounts(counts,root?.el||steps[0]?.el||null,true)||'';
 }
 
 function countOpenSlots(){
